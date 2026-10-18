@@ -1,0 +1,21 @@
+# Starter pack: general (any profession). Add your field's tools and synonyms over time.
+
+forbidden_terms = []
+exclude_title_words = ["intern", "interns", "internship", "internships", "apprentice", "apprenticeship",
+                       "student", "students", "trainee", "fresher", "freshers"]
+tool_terms = []
+
+sensitive_flag = '\bstudents?\b|\bintern(ship)?s?\b|visa|work permit|work authori[sz]ation|right to work|clearance|citizen|nationality|native (speaker|level)'
+sensitive_text = 'currently (pursuing|enrolled)|\bstudents? only\b|\binternships?\b|security clearance|clearance (is )?required|citizens? only|no (visa )?sponsorship|work authori[sz]ation (is )?required'
+
+[[concepts]]
+requirement = 'communicat|stakeholder|collaborat|customer|client'
+evidence = 'client|stakeholder|present|cross-functional|collaborat|communicat|customer|supplier'
+
+[[concepts]]
+requirement = 'leader|mentor|lead|team|supervis'
+evidence = 'lead|team|mentor|coach|manag|supervis|onboard|train'
+
+[[concepts]]
+requirement = 'report|document|record'
+evidence = 'report|document|record|procedure|kpi'

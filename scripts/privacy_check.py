@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PRIVATE_PATHS = re.compile(r"^(\.env$|config\.local\.toml$|data/|backup_before_|venv/|\.venv/)|\.log$|^profiles/(?!example/)")
+PRIVATE_PATHS = re.compile(r"^(\.env$|config\.local\.toml$|data/|backup_before_|venv/|\.venv/)|\.log$|^profiles/(?!example/|_packs/)")
 KEYS = re.compile(r"AIza[0-9A-Za-z_-]{30,}|gsk_[0-9A-Za-z]{20,}|sk-(?:or-)?[0-9A-Za-z_-]{20,}|nvapi-[0-9A-Za-z_-]{20,}"
                   r"|csk-[0-9A-Za-z]{20,}")
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")

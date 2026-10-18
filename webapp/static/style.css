@@ -90,3 +90,8 @@ svg.chart .gate{stroke:var(--muted);stroke-dasharray:3 4}
 @media (prefers-reduced-motion:reduce){.toast{transition:none}}
 .tag.applied,.tag.interview,.tag.offer{border-color:var(--ok);color:var(--ok)}
 .tag.rejected,.tag.withdrawn,.tag.archived{border-color:var(--bad);color:var(--bad)}
+/* Guided setup */
+.steps{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.stp{font-size:13px;padding:4px 10px;border-radius:999px;border:1px solid var(--line);color:var(--muted);text-decoration:none}
+.stp.done{border-color:var(--ok);color:var(--ok)}.stp.on{background:var(--lilac);border-color:var(--lilac);color:#000;font-weight:700}
+input[type=file]{color:var(--muted);font:inherit}

@@ -72,11 +72,17 @@ A small web app on your computer (and optionally your phone on home Wi-Fi):
 | Applications | Track status, dates and notes |
 | Companies | Add any company by its careers link; the job platform is detected and tested automatically |
 | Settings | Roles, locations, sources, daily schedule, phone access, notifications |
+| Set up | Turn your resumes into a profile, confirming every fact |
+| Health check | Everything PipelineHQ needs, with a fix for anything wrong |
 
 ## Quick start (macOS)
 
 Requirements: Python 3.11+, [LM Studio](https://lmstudio.ai) (free) with a model such as **Qwen 3.5 9B**,
 and optionally [LibreOffice](https://www.libreoffice.org) (free) for silent PDF conversion.
+
+**Hardware:** a computer with **16 GB of memory** (e.g. an Apple-silicon Mac mini or MacBook) runs a 9B model at about
+15-20 words per second; one job takes roughly 1-2 minutes to analyse. 8 GB machines can try a smaller model with weaker
+results. Keep 20 GB of disk free for the model and files.
 
 ```bash
 git clone https://github.com/<you>/PipelineHQ.git && cd PipelineHQ
@@ -92,14 +98,34 @@ In LM Studio: load the model with **Context Length 16384**, start the local serv
 "thinking" off (for Qwen 3.5, add `{%- set enable_thinking = false %}` as the first line of its prompt template).
 Check it with `python modules/local_analyzer.py --probe`.
 
+### Windows and Linux
+
+Everything except two conveniences works the same: the pipeline, the control centre, resumes and the guided setup.
+Not available outside macOS: the **morning run** and **background control centre** buttons (they use macOS's launchd).
+Instead, schedule `python orchestrator.py` with Task Scheduler (Windows) or cron (Linux), and start the control centre
+with `python webapp/app.py`. Use `venv\Scripts\activate` instead of `source venv/bin/activate` on Windows.
+LibreOffice is recommended for PDFs on every system.
+
 ## Make it yours
 
-Everything personal lives in one folder, `profiles/<yourname>/`, which is never committed:
+**Guided setup (recommended, about 20 minutes).** On the Dashboard press **Set up my profile**:
+
+1. Add every version of your resume (.docx, .pdf or .txt).
+2. The local model **proposes** your roles, bullets, skills, education and certificates. Python checks every bullet
+   against your resume text: bullets found word for word are pre-ticked; anything the model reworded starts
+   **unticked** and is marked, so nothing invented slips in.
+3. You confirm, edit or delete each item, and set honest skill levels (novice / working knowledge never count as a
+   full match).
+4. Name one or two resume variants, write a short summary in your own words, pick a starter pack for your field
+   (mechanical, software or general), and optionally upload a resume whose layout you like.
+5. The profile is validated, saved in `profiles/<yourname>/` and switched on.
+
+**By hand.** Everything personal lives in one folder, `profiles/<yourname>/`, which is never committed:
 
 | File | What it holds |
 |---|---|
 | `fact_bank.json` | Your roles, verified bullets, skills (with proficiency), education, certificates |
-| `resume_profile.json` | Resume variants: which roles, bullets and skills each uses, headline, summary phrases |
+| `resume_profile.json` | Resume variants: which roles, bullets and skills each uses, headline, summary |
 | `domain.toml` | Profession rules: synonyms, tool names, title words to exclude, blockers, watch list |
 | `search.toml` | Roles, locations, sources, schedule (edited from Settings) |
 | `resume_template.docx` | Your resume's layout: `python modules/resume_builder.py --make-template your_resume.docx` |
@@ -110,6 +136,10 @@ Copy `profiles/example/` to `profiles/<yourname>/`, replace the content, and sel
 [pipeline]
 profile = "yourname"
 ```
+
+**Health check.** The Dashboard shows a health line; the **Health check** page (or `python modules/doctor.py --model`)
+verifies Python packages, your profile, LM Studio (server, loaded model, context length, thinking switched off), the
+PDF converter, cloud keys, disk space and the morning run, with a plain fix for anything wrong.
 
 ## Daily use
 
@@ -142,9 +172,12 @@ modules/local_analyzer.py  Phase 2-3: model analysis, Python guards, scoring, va
 modules/cloud_generator.py Phase 4: resume plan and guarded tailoring
 modules/resume_builder.py  Phase 5: Word/PDF resumes and the application ledger
 modules/companies.py     add companies, detect their job platform
+modules/onboarding.py    guided setup: resumes -> verified, confirmed profile
+modules/doctor.py        health check with plain-English fixes
 modules/scheduler.py     daily run and background control centre (macOS launchd)
 webapp/                  the control centre
 profiles/example/        fictional sample profile
+profiles/_packs/         starter rules for mechanical, software and general profiles
 tests/                   offline tests
 ```
 
@@ -153,7 +186,6 @@ tests/                   offline tests
 - Connector for Avature career sites
 - Recruiter / hiring-manager outreach drafts grounded in the Fact Bank
 - Interview preparation (STAR answers) per approved job, from the evidence map
-- Guided setup that builds a Fact Bank from existing resumes, with confirmation of every fact
 
 ## Author
 

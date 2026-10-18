@@ -1,0 +1,110 @@
+{% extends "base.html" %}{% block body %}
+<h1>Set up a profile</h1>
+{% set names = ['Start','Your resumes','Review your facts','Resume variants','Search & layout','Done'] %}
+{% if step %}<div class="steps">{% for n in names %}{% set k = loop.index %}
+<a class="stp {{ 'on' if k==step }} {{ 'done' if k < step }}" {% if k <= (st.step or 1) and k > 1 %}href="/setup/{{ slug }}?step={{ k }}"{% endif %}>{{ k }}. {{ n }}</a>{% endfor %}</div>{% endif %}
+
+{% if step == 0 %}
+<div class="card"><p style="margin-top:0">Turn your existing resumes into a profile in about 20 minutes. The local model <b>proposes</b> your roles,
+bullets and skills; every bullet is checked against your resume text, and <b>nothing is saved until you confirm it</b>.</p>
+<form method="post" action="/setup/start">
+<div class="grid"><div><label>Your full name</label><input type="text" name="name" required></div>
+<div><label>Short profile name (one word)</label><input type="text" name="slug" placeholder="e.g. priya"></div></div>
+<div class="grid"><div><label>E-mail</label><input type="text" name="email"></div><div><label>Phone</label><input type="text" name="phone"></div></div>
+<div class="grid"><div><label>Location</label><input type="text" name="location" placeholder="e.g. Pune, India"></div><div><label>LinkedIn</label><input type="text" name="linkedin" placeholder="linkedin.com/in/..."></div></div>
+<p><button class="btn primary">Start</button></p></form></div>
+{% if drafts %}<h2>Continue a setup</h2>{% for d in drafts %}<div class="card row spread"><div><b>{{ d.name }}</b> <span class="muted small">({{ d.slug }}), step {{ d.step }}</span></div>
+<a class="btn" href="/setup/{{ d.slug }}">Continue</a></div>{% endfor %}{% endif %}
+
+{% elif step == 2 %}
+<div class="card"><p style="margin-top:0">Add every version of your resume you have (.docx, .pdf or .txt). More versions means more of your real bullets to choose from.</p>
+<form method="post" action="/setup/{{ slug }}/upload" enctype="multipart/form-data" class="row">
+<input type="file" name="resumes" multiple accept=".docx,.pdf,.txt"><button class="btn">Add</button></form>
+{% for f in files %}<div class="row spread" style="border-top:1px solid var(--line-soft);padding:6px 0;margin-top:6px"><span>{{ f }}</span>
+<form class="inline" method="post" action="/setup/{{ slug }}/remove-file"><input type="hidden" name="file" value="{{ f }}"><button class="btn bad">Remove</button></form></div>{% endfor %}
+{% set r = st.reading or {} %}
+<div id="readbox" style="margin-top:12px">
+{% if r.status == 'running' %}<div class="title">Reading your resumes: <span id="rd">{{ r.done }}</span> of {{ r.total }} done</div>
+<div class="muted small">The local model is reading them; this takes about a minute per resume. You can leave this page open.</div>
+{% elif r.status == 'error' %}<div class="flash warn">Could not read the resumes: {{ r.error }}</div>{% endif %}</div>
+<form method="post" action="/setup/{{ slug }}/read" style="margin-top:10px"><button class="btn primary" {% if not files or r.status=='running' %}disabled{% endif %}>Read my resumes</button>
+{% if st.proposal %}<a class="btn" href="/setup/{{ slug }}?step=3">Go to review</a>{% endif %}</form></div>
+{% if r.status == 'running' %}<script>setInterval(async()=>{const r=await (await fetch('/setup/{{ slug }}/status')).json();
+document.getElementById('rd').textContent=r.done; if(r.status!=='running'){location.href='/setup/{{ slug }}'+(r.status==='done'?'?step=3':'?step=2');}},3000);</script>{% endif %}
+
+{% elif step == 3 %}{% set p = st.proposal %}
+<div class="card small"><b>How to review:</b> untick anything that is not true or not yours, and edit wording freely.
+<span class="tag met">in your resume</span> means the bullet was found word for word in your resume.
+<span class="tag partial">reworded</span> means the model changed it, so it starts unticked: tick it only if it is accurate.</div>
+<form method="post" action="/setup/{{ slug }}/review">
+<h2>Roles</h2>
+{% for r in p.roles %}{% set i = loop.index0 %}<div class="card">
+<label style="font-weight:400;margin-top:0"><input type="checkbox" name="keep_role_{{ i }}" checked> <b>Keep this role</b>
+<span class="muted small">(from {{ r.sources|join(', ') }})</span>{% if not r.dates_found %} <span class="tag partial">dates not found in resume: check</span>{% endif %}</label>
+<div class="grid"><div><label>Job title</label><input type="text" name="title_{{ i }}" value="{{ r.title }}"></div>
+<div><label>Employer</label><input type="text" name="emp_{{ i }}" value="{{ r.employer }}"></div>
+<div><label>Location</label><input type="text" name="loc_{{ i }}" value="{{ r.location }}"></div></div>
+<div class="grid"><div><label>Start (YYYY-MM)</label><input type="text" name="start_{{ i }}" value="{{ r.start }}"></div>
+<div><label>End (YYYY-MM or Present)</label><input type="text" name="end_{{ i }}" value="{{ r.end }}"></div></div>
+<label>One-line context (client, programme, team)</label><input type="text" name="ctx_{{ i }}" value="{{ r.context }}">
+<label>Bullets</label>
+{% for b in r.bullets %}<div class="row" style="align-items:flex-start;margin-bottom:6px">
+<input type="checkbox" name="b_{{ i }}_{{ loop.index0 }}_keep" {{ 'checked' if b.status=='verified' }} style="margin-top:12px">
+<textarea name="b_{{ i }}_{{ loop.index0 }}_text" style="flex:1;min-height:52px">{{ b.text }}</textarea>
+<span class="tag {{ 'met' if b.status=='verified' else 'partial' }}" style="margin-top:10px">{{ 'in your resume' if b.status=='verified' else 'reworded' }}</span></div>{% endfor %}
+<label>Add bullets the resumes missed (one per line)</label><textarea name="new_{{ i }}" style="min-height:52px"></textarea></div>{% endfor %}
+
+<h2>Skills</h2><div class="card"><p class="muted small" style="margin-top:0">Be honest about levels: "novice" and "working knowledge" skills never count as a full match for a job.</p>
+{% for s in p.skills %}{% set j = loop.index0 %}<div class="row" style="margin-bottom:6px"><input type="checkbox" name="s_{{ j }}_keep" checked>
+<input type="text" name="s_{{ j }}_text" value="{{ s.text }}" style="flex:2;min-width:160px">
+<select name="s_{{ j }}_level" style="flex:1;min-width:130px">{% for l in levels %}<option value="{{ l }}">{{ l|replace('working','working knowledge') }}</option>{% endfor %}</select>
+<select name="s_{{ j }}_section" style="flex:1;min-width:130px">{% for k,v in sections.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>{% endfor %}
+<label>Add skills (one per line)</label><textarea name="new_skills" style="min-height:52px"></textarea></div>
+
+<h2>Education</h2><div class="card">{% for e in p.education %}{% set k = loop.index0 %}<div class="row" style="margin-bottom:6px"><input type="checkbox" name="e_{{ k }}_keep" checked>
+<input type="text" name="e_{{ k }}_degree" value="{{ e.degree }}" style="flex:2;min-width:160px"><input type="text" name="e_{{ k }}_inst" value="{{ e.institution }}" style="flex:2;min-width:160px">
+<input type="text" name="e_{{ k }}_year" value="{{ e.year }}" style="flex:1;min-width:70px"></div>{% endfor %}
+{% if not p.education %}<div class="grid"><div><label>Degree</label><input type="text" name="new_degree"></div><div><label>Institution</label><input type="text" name="new_inst"></div><div><label>Year</label><input type="text" name="new_year"></div></div>{% endif %}
+<label>Final-year / key project (optional)</label><input type="text" name="final_year_project"></div>
+
+<h2>Certificates</h2><div class="card">{% for c in p.certifications %}{% set k = loop.index0 %}<div class="row" style="margin-bottom:6px"><input type="checkbox" name="c_{{ k }}_keep" checked>
+<input type="text" name="c_{{ k }}_name" value="{{ c.name }}" style="flex:2;min-width:160px"><input type="text" name="c_{{ k }}_issuer" value="{{ c.issuer }}" style="flex:1;min-width:120px">
+<select name="c_{{ k }}_status" style="flex:1;min-width:120px"><option value="completed" {{ 'selected' if c.status=='completed' }}>completed</option><option value="in progress" {{ 'selected' if c.status!='completed' }}>in progress</option></select></div>
+{% else %}<div class="muted small">None found.</div>{% endfor %}<p class="muted small">In-progress certificates appear on your resume as "in progress" but never count as evidence.</p></div>
+
+<h2>Languages and additional</h2><div class="card"><label style="margin-top:0">Languages (one per line, e.g. "English (fluent)")</label><textarea name="languages" style="min-height:52px">{{ p.languages|join('\n') }}</textarea>
+{% for a in p.additional %}<div class="row" style="margin-bottom:6px"><input type="checkbox" name="a_{{ loop.index0 }}_keep" {{ 'checked' if a.status=='verified' }}>
+<input type="text" name="a_{{ loop.index0 }}_text" value="{{ a.text }}" style="flex:1"></div>{% endfor %}
+<label>Add projects, volunteering or awards (one per line)</label><textarea name="new_additional" style="min-height:52px"></textarea></div>
+<p><button class="btn primary">Save and continue</button></p></form>
+
+{% elif step == 4 %}{% set roles = st.confirmed.roles %}{% set vf = st.variants_form or [] %}
+<form method="post" action="/setup/{{ slug }}/variants">
+<div class="card small">A <b>resume variant</b> is one version of your resume for one kind of job. Most people need one; add a second if you
+apply for two different kinds of role (e.g. design engineer and configuration analyst). Every job is scored for each variant and gets the better one.</div>
+{% for v in (1, 2) %}{% set d = vf[v-1] if vf|length >= v else {} %}<div class="card"><h2 style="margin-top:0">Variant {{ v }}{% if v==2 %} <span class="muted small">(optional)</span>{% endif %}</h2>
+<label>Name (the kind of job)</label><input type="text" name="v{{ v }}_label" value="{{ d.label or (roles[0].title if v==1 and roles else '') }}" placeholder="e.g. Mechanical Design Engineer">
+<label>Typical job titles (comma separated)</label><input type="text" name="v{{ v }}_titles" value="{{ d.titles }}" placeholder="e.g. Design Engineer, Product Design Engineer">
+<label>Headline under your name</label><input type="text" name="v{{ v }}_headline" value="{{ d.headline }}" placeholder="e.g. Mechanical Design Engineer  |  Sheet Metal  |  Siemens NX">
+<label>Profile summary (2-3 sentences, your own words, only true claims)</label><textarea name="v{{ v }}_summary">{{ d.summary }}</textarea>
+<label>Roles on this resume</label>{% for r in roles %}<label style="font-weight:400;margin:4px 0"><input type="checkbox" name="v{{ v }}_roles" value="{{ loop.index0 }}" {{ 'checked' if not d or loop.index0 in d.role_index }}> {{ r.title }}, {{ r.employer }}</label>{% endfor %}</div>{% endfor %}
+<div class="card"><label style="margin-top:0">Starter rules for your field</label><select name="pack">{% for pk in packs %}<option value="{{ pk }}" {{ 'selected' if pk==(st.pack or 'general') }}>{{ pk|capitalize }}</option>{% endfor %}</select>
+<p class="muted small">Synonyms, tool names and title filters for your profession. You can fine-tune them later in domain.toml.</p></div>
+<p><button class="btn primary">Save and continue</button></p></form>
+
+{% elif step == 5 %}{% set s = st.search or {} %}
+<form method="post" action="/setup/{{ slug }}/finish" enctype="multipart/form-data" class="card">
+<label style="margin-top:0">Job titles to search for (one per line)</label><textarea name="roles">{{ (s.roles or (st.variants_form|map(attribute='label')|list))|join('\n') }}</textarea>
+<label>Locations (one per line)</label><textarea name="locations">{{ (s.locations or [st.basics.location.split(',')[0]] if st.basics.location else [])|join('\n') }}</textarea>
+<label>Country</label><input type="text" name="country" value="{{ s.country or (st.basics.location.split(',')[-1].strip() if ',' in (st.basics.location or '') else '') }}">
+<label>Resume layout (optional): upload a .docx resume whose look you like</label><input type="file" name="template" accept=".docx">
+<p class="muted small">Only its page setup, fonts and bullet style are used, never its text. Without one, a clean default layout is used.</p>
+<p><button class="btn primary">Create my profile</button></p></form>
+
+{% elif step == 6 %}
+<div class="card"><h2 style="margin-top:0">Your profile is ready</h2>
+<p>It has passed all checks and was saved as <b>profiles/{{ slug }}/</b>. Your source resumes stay in that folder, on this computer only.</p>
+<form method="post" action="/setup/{{ slug }}/use"><button class="btn primary">Use this profile now</button></form>
+<p class="muted small">After switching, press Run now on the Dashboard. Fine-tuning later: edit the files in profiles/{{ slug }}/ (see the README).</p></div>
+{% endif %}
+{% endblock %}

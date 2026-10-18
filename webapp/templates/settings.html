@@ -1,5 +1,6 @@
 {% extends "base.html" %}{% block body %}
-<h1>Settings</h1><form method="post" class="card">
+<h1>Settings</h1>
+<div class="card row spread"><div class="small">Active profile: <b>{{ profile_name }}</b></div><a class="btn" href="/setup">Set up a new profile from resumes</a></div><form method="post" class="card">
 <label>Roles (one per line)</label><textarea name="roles">{{ s.roles|join('\n') }}</textarea>
 <label>Locations (one per line; leave empty for anywhere in the country)</label><textarea name="locations">{{ s.locations|join('\n') }}</textarea>
 <label>Country</label><input type="text" name="country" value="{{ s.country }}">

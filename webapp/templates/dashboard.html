@@ -1,5 +1,7 @@
 {% extends "base.html" %}{% block body %}
 <h1>Dashboard</h1>
+{% if profile_name == 'example' %}<div class="card"><div class="row spread"><div><div class="title">You are using the sample profile (Alex Morgan)</div>
+<div class="muted small">Create your own from your resumes in about 20 minutes.</div></div><a class="btn primary" href="/setup">Set up my profile</a></div></div>{% endif %}
 <div class="card"><div class="row spread"><div>
 <div class="title">Searching for</div>
 <div class="muted small">{{ search.roles|join(', ') or '—' }} · {{ search.locations|join(', ') or 'any location' }} · {{ search.sites|join(', ') }}{% if search.scan_company_portals %} · company portals{% endif %}</div>
@@ -15,6 +17,11 @@
 <pre class="log" id="tasklog">{{ task.tail }}</pre></div>{% endif %}
 {% if not task.running and task.label and task.finished_ago_s is defined and task.finished_ago_s < 180 %}
 <div class="toast" id="toast" role="status">Finished: {{ task.label }}. Started {{ task.started_hm }}, took {{ task.minutes }} min.</div>{% endif %}
+
+<div class="card row spread small"><div>{% if not health %}Health check not run yet.{% elif issues %}
+<b style="color:{{ 'var(--bad)' if issues|selectattr('status','equalto','fail')|list else 'var(--sun)' }}">Health: {{ issues|length }} thing{{ '' if issues|length==1 else 's' }} to look at</b>
+<span class="muted">({{ issues|map(attribute='name')|join(', ') }})</span>{% else %}<b style="color:var(--ok)">Health: all good</b>{% endif %}
+{% if health %}<span class="muted"> checked {{ health.at|replace('T',' ') }}</span>{% endif %}</div><a class="btn" href="/doctor">Health check</a></div>
 
 <section class="hero-funnel"><h2>Your pipeline</h2>{{ ch.funnel }}</section>
 

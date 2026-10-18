@@ -4,6 +4,7 @@ config.local.toml
 data/
 profiles/*
 !profiles/example/
+!profiles/_packs/
 backup_before_*/
 *.log
 run*.log

@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block body %}
+<h1>Health check</h1>
+<div class="card row spread"><div class="muted small">Checked {{ res.at|replace('T',' ') if res.at else 'never' }}</div>
+<div class="row"><form class="inline" method="post"><button class="btn">Check again</button></form>
+<form class="inline" method="post"><input type="hidden" name="model" value="1"><button class="btn primary">Check including a model test</button></form></div></div>
+{% for c in res.checks %}<div class="card"><div class="row spread"><div class="title">{{ c.name }}</div>
+<span class="tag {{ 'met' if c.status=='ok' else ('partial' if c.status=='warn' else 'unmet') }}">{{ {'ok':'ok','warn':'check','fail':'problem'}[c.status] }}</span></div>
+<div class="small muted">{{ c.detail }}</div>{% if c.fix and c.status!='ok' %}<div class="small" style="margin-top:4px"><b>Fix:</b> {{ c.fix }}</div>{% endif %}</div>{% endfor %}
+<p class="muted small">The model test sends your local model one tiny request (a few seconds) to confirm it answers quickly, in valid JSON, without "thinking".</p>
+{% endblock %}

@@ -1,0 +1,42 @@
+# Starter pack: software / IT / data. Edit freely; your profile keeps its own copy as domain.toml.
+
+forbidden_terms = []
+exclude_title_words = ["intern", "interns", "internship", "internships", "apprentice", "apprenticeship",
+                       "student", "students", "trainee", "fresher", "freshers"]
+
+tool_terms = ["Python", "Java", "JavaScript", "TypeScript", "Go", "C#", "C++", "Rust", "Kotlin", "Swift", "SQL",
+              "PostgreSQL", "MySQL", "MongoDB", "Redis", "Kafka", "Spark", "Airflow", "dbt", "Snowflake", "BigQuery",
+              "AWS", "Azure", "GCP", "Docker", "Kubernetes", "Terraform", "Ansible", "Jenkins", "GitHub Actions",
+              "React", "Angular", "Vue", "Node.js", "Django", "Flask", "Spring", ".NET", "TensorFlow", "PyTorch",
+              "Power BI", "Tableau", "Salesforce", "ServiceNow", "SAP", "Jira"]
+
+sensitive_flag = '\bstudents?\b|\bintern(ship)?s?\b|visa|work permit|work authori[sz]ation|right to work|clearance|citizen|nationality|native (speaker|level)|\b(french|german|spanish|japanese|dutch|arabic|mandarin)\b'
+sensitive_text = 'currently (pursuing|enrolled)|\bstudents? only\b|\binternships?\b|security clearance|clearance (is )?required|must (be|hold|have) [^.]{0,40}citizen|citizens? only|no (visa )?sponsorship|work authori[sz]ation (is )?required'
+
+[[concepts]]
+requirement = 'programming|coding|software development|develop'
+evidence = 'develop|built|implement|code|program|engineer|wrote|design'
+
+[[concepts]]
+requirement = 'test|quality|qa'
+evidence = 'test|unit|integration|automat|quality|ci|coverage'
+
+[[concepts]]
+requirement = 'cloud|infrastructure|devops|deploy'
+evidence = 'aws|azure|gcp|cloud|deploy|kubernetes|docker|terraform|ci/cd|pipeline'
+
+[[concepts]]
+requirement = 'data|analytics|reporting|dashboard'
+evidence = 'data|sql|analytic|dashboard|report|etl|warehouse|kpi'
+
+[[concepts]]
+requirement = 'communicat|stakeholder|collaborat|customer|client'
+evidence = 'client|stakeholder|present|cross-functional|collaborat|communicat|customer'
+
+[[concepts]]
+requirement = 'leader|mentor|lead|team'
+evidence = 'lead|team|mentor|coach|manag|onboard|own'
+
+[[concepts]]
+requirement = 'agile|scrum|sprint'
+evidence = 'agile|scrum|sprint|kanban|stand-up'

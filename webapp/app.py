@@ -37,6 +37,8 @@ from modules.resume_builder import LEDGER_COLUMNS, read_ledger, write_ledger  # 
 from webapp import charts  # noqa: E402
 from modules import companies as comp  # noqa: E402
 from modules import scheduler  # noqa: E402
+from modules import onboarding as ob  # noqa: E402
+from modules import doctor  # noqa: E402
 from modules.settings import DATA_DIR, profile_dir  # noqa: E402
 
 PORT = int(os.getenv("WEBAPP_PORT", "8765"))
@@ -285,7 +287,8 @@ def counts():
             c["archived"] += 1
     c["leads"] = len(jread(LEADS, []))
     c["applications"] = sum(1 for r in read_ledger().values() if r.get("status") not in ("", "resume_ready", "archived"))
-    return {"counts": c, "now": datetime.now(), "passcode_on": bool(PASSCODE)}
+    from modules.settings import CFG
+    return {"counts": c, "now": datetime.now(), "passcode_on": bool(PASSCODE), "profile_name": CFG["pipeline"]["profile"]}
 
 
 SOURCE_NAMES = {"workday": "Company portals", "greenhouse": "Company portals", "lever": "Company portals",
@@ -331,8 +334,22 @@ def _ran(info: dict) -> dict:
 @app.route("/")
 def dashboard():
     last = jread(LAST_RUN, {})
+    health = jread(doctor.RESULT, {})
+    issues = [c for c in health.get("checks", []) if c["status"] != "ok"]
     return render_template("dashboard.html", last=last, ran=_ran(last), task=task_state(), search=read_search(),
-                           ch=dashboard_charts())
+                           ch=dashboard_charts(), health=health, issues=issues)
+
+
+@app.route("/doctor", methods=["GET", "POST"])
+def doctor_page():
+    if request.method == "POST":
+        doctor.run(model=request.form.get("model") == "1")
+        return redirect(url_for("doctor_page"))
+    res = jread(doctor.RESULT, {})
+    if not res:
+        doctor.run()
+        res = jread(doctor.RESULT, {})
+    return render_template("doctor.html", res=res)
 
 
 @app.route("/task")
@@ -632,6 +649,220 @@ def companies_action(i: int, action: str):
         flash("Saved.", "ok")
     comp.save(items)
     return redirect(url_for("companies"))
+
+
+# --------------------------------------------------------------------------- #
+# Guided setup (new profile from your resumes)
+# --------------------------------------------------------------------------- #
+
+def _bg_extract(slug: str) -> None:
+    """Background: read every uploaded resume, ask the local model for a proposal, verify and merge."""
+    import threading
+
+    files = sorted((ob.folder(slug) / "source_resumes").glob("*"))
+    st = ob.load_state(slug)
+    st["reading"] = {"status": "running", "done": 0, "total": len(files), "error": "", "log": []}
+    ob.save_state(slug, st)              # marked as running before the page reloads
+
+    def work():
+        try:
+            from orchestrator import ensure_model
+            from modules.local_analyzer import make_llm
+            if not ensure_model():
+                raise RuntimeError("the local model is not available (open LM Studio and load your model)")
+            call = make_llm("")
+            props = []
+            for f in files:
+                st = ob.load_state(slug)
+                st["reading"]["log"].append(f"Reading {f.name} ...")
+                ob.save_state(slug, st)
+                text = ob.read_text(f)
+                props.append((ob.propose(text, call), text, f.name))
+                st = ob.load_state(slug)
+                st["reading"]["done"] += 1
+                ob.save_state(slug, st)
+            st = ob.load_state(slug)
+            st["proposal"] = ob.merge(props)
+            st["reading"]["status"] = "done"
+            st["step"] = 3
+        except Exception as e:  # noqa: BLE001
+            st = ob.load_state(slug)
+            st["reading"].update(status="error", error=f"{type(e).__name__}: {str(e)[:300]}")
+        ob.save_state(slug, st)
+    threading.Thread(target=work, daemon=True).start()
+
+
+@app.route("/setup")
+def setup_home():
+    return render_template("setup.html", step=0, drafts=ob.in_progress(), st={}, slug="")
+
+
+@app.post("/setup/start")
+def setup_start():
+    f = request.form
+    name = f.get("name", "").strip()
+    slug = ob.slugify(f.get("slug") or name.split()[0] if name else "")
+    if not name or not slug:
+        flash("Type your name to start.", "warn")
+        return redirect(url_for("setup_home"))
+    if (ob.folder(slug) / "fact_bank.json").exists() and not ob.state_path(slug).exists():
+        flash(f"A profile called '{slug}' already exists. Choose another short name.", "warn")
+        return redirect(url_for("setup_home"))
+    st = ob.load_state(slug)
+    st["basics"] = {k: f.get(k, "").strip() for k in ("name", "email", "phone", "location", "linkedin")}
+    st["step"] = max(2, st.get("step", 2))
+    ob.save_state(slug, st)
+    return redirect(url_for("setup_step", slug=slug))
+
+
+@app.route("/setup/<slug>")
+def setup_step(slug: str):
+    st = ob.load_state(slug)
+    if not st:
+        abort(404)
+    step = int(request.args.get("step") or st.get("step", 2))
+    needs = {3: "proposal", 4: "confirmed", 5: "variants_form"}
+    while step in needs and not st.get(needs[step]):   # never show a step whose input is not ready yet
+        step -= 1
+    step = min(step, max(st.get("step", 2), 2)) if step == 6 and st.get("step") != 6 else step
+    files = sorted(p.name for p in (ob.folder(slug) / "source_resumes").glob("*"))
+    return render_template("setup.html", step=step, st=st, slug=slug, files=files, levels=list(ob.LEVELS),
+                           sections=ob.SECTIONS, packs=sorted(p.stem for p in ob.PACKS_DIR.glob("*.toml")))
+
+
+@app.get("/setup/<slug>/status")
+def setup_status(slug: str):
+    return jsonify(ob.load_state(slug).get("reading", {}))
+
+
+@app.post("/setup/<slug>/upload")
+def setup_upload(slug: str):
+    dest = ob.folder(slug) / "source_resumes"
+    dest.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for f in request.files.getlist("resumes"):
+        name = re.sub(r"[^A-Za-z0-9._ -]", "_", Path(f.filename or "").name)
+        if name and Path(name).suffix.lower() in (".docx", ".pdf", ".txt"):
+            f.save(dest / name)
+            n += 1
+    flash(f"{n} resume(s) added." if n else "Choose .docx, .pdf or .txt files.", "ok" if n else "warn")
+    return redirect(url_for("setup_step", slug=slug, step=2))
+
+
+@app.post("/setup/<slug>/remove-file")
+def setup_remove_file(slug: str):
+    (ob.folder(slug) / "source_resumes" / Path(request.form.get("file", "")).name).unlink(missing_ok=True)
+    return redirect(url_for("setup_step", slug=slug, step=2))
+
+
+@app.post("/setup/<slug>/read")
+def setup_read(slug: str):
+    if not list((ob.folder(slug) / "source_resumes").glob("*")):
+        flash("Add at least one resume first.", "warn")
+    elif ob.load_state(slug).get("reading", {}).get("status") == "running":
+        flash("Already reading your resumes.", "warn")
+    else:
+        _bg_extract(slug)
+    return redirect(url_for("setup_step", slug=slug, step=2))
+
+
+@app.post("/setup/<slug>/review")
+def setup_review(slug: str):
+    st, f = ob.load_state(slug), request.form
+    prop = st.get("proposal", {})
+    roles = []
+    for i, r in enumerate(prop.get("roles", [])):
+        if not f.get(f"keep_role_{i}"):
+            continue
+        bullets = [f.get(f"b_{i}_{k}_text", "").strip() for k in range(len(r["bullets"])) if f.get(f"b_{i}_{k}_keep")]
+        bullets += [x.strip(" -•\t") for x in f.get(f"new_{i}", "").splitlines() if x.strip()]
+        roles.append({"employer": f.get(f"emp_{i}", "").strip(), "title": f.get(f"title_{i}", "").strip(),
+                      "location": f.get(f"loc_{i}", "").strip(), "start": f.get(f"start_{i}", "").strip(),
+                      "end": f.get(f"end_{i}", "").strip(), "context": f.get(f"ctx_{i}", "").strip(),
+                      "bullets": [b for b in bullets if b]})
+    skills = [{"text": f.get(f"s_{j}_text", "").strip(), "level": f.get(f"s_{j}_level", "expert"),
+               "section": f.get(f"s_{j}_section", "tools")}
+              for j in range(len(prop.get("skills", []))) if f.get(f"s_{j}_keep") and f.get(f"s_{j}_text", "").strip()]
+    skills += [{"text": x.strip(), "level": "expert", "section": "tools"} for x in f.get("new_skills", "").splitlines() if x.strip()]
+    edu = [{"degree": f.get(f"e_{k}_degree", "").strip(), "institution": f.get(f"e_{k}_inst", "").strip(),
+            "year": f.get(f"e_{k}_year", "").strip()} for k in range(len(prop.get("education", []))) if f.get(f"e_{k}_keep")]
+    if f.get("new_degree", "").strip():
+        edu.append({"degree": f["new_degree"].strip(), "institution": f.get("new_inst", "").strip(), "year": f.get("new_year", "").strip()})
+    certs = [{"name": f.get(f"c_{k}_name", "").strip(), "issuer": f.get(f"c_{k}_issuer", "").strip(),
+              "status": f.get(f"c_{k}_status", "completed")} for k in range(len(prop.get("certifications", []))) if f.get(f"c_{k}_keep")]
+    adds = [f.get(f"a_{k}_text", "").strip() for k in range(len(prop.get("additional", []))) if f.get(f"a_{k}_keep")]
+    adds += [x.strip() for x in f.get("new_additional", "").splitlines() if x.strip()]
+    st["confirmed"] = {"roles": roles, "skills": skills, "education": edu, "certifications": certs,
+                       "languages": [x.strip() for x in f.get("languages", "").splitlines() if x.strip()],
+                       "additional": [a for a in adds if a], "final_year_project": f.get("final_year_project", "").strip()}
+    if not any(r["bullets"] for r in roles):
+        flash("Keep at least one role with at least one bullet.", "warn")
+        ob.save_state(slug, st)
+        return redirect(url_for("setup_step", slug=slug, step=3))
+    st["step"] = 4
+    ob.save_state(slug, st)
+    return redirect(url_for("setup_step", slug=slug))
+
+
+@app.post("/setup/<slug>/variants")
+def setup_variants(slug: str):
+    st, f = ob.load_state(slug), request.form
+    n_roles = len(st.get("confirmed", {}).get("roles", []))
+    variants = []
+    for v in (1, 2):
+        label = f.get(f"v{v}_label", "").strip()
+        if not label:
+            continue
+        picked = [int(x) for x in f.getlist(f"v{v}_roles") if x.isdigit() and int(x) < n_roles]
+        variants.append({"label": label, "titles": f.get(f"v{v}_titles", ""), "headline": f.get(f"v{v}_headline", "").strip(),
+                         "summary": f.get(f"v{v}_summary", "").strip(), "role_index": picked})
+    if not variants:
+        flash("Give your first resume variant a name, e.g. 'Mechanical Design Engineer'.", "warn")
+        return redirect(url_for("setup_step", slug=slug, step=4))
+    st["variants_form"] = variants
+    st["pack"] = f.get("pack", "general")
+    st["step"] = 5
+    ob.save_state(slug, st)
+    return redirect(url_for("setup_step", slug=slug))
+
+
+@app.post("/setup/<slug>/finish")
+def setup_finish(slug: str):
+    st, f = ob.load_state(slug), request.form
+    st["search"] = {"roles": [x.strip() for x in f.get("roles", "").splitlines() if x.strip()],
+                    "locations": [x.strip() for x in f.get("locations", "").splitlines() if x.strip()],
+                    "country": f.get("country", "").strip()}
+    tpl = None
+    up = request.files.get("template")
+    if up and up.filename and up.filename.lower().endswith(".docx"):
+        tpl = ob.folder(slug) / "source_resumes" / "_layout_template.docx"
+        tpl.parent.mkdir(parents=True, exist_ok=True)
+        up.save(tpl)
+    # role indexes -> role ids (ids are created by the builder, in the same order)
+    fb_preview, _, _ = ob.build_pack({**st, "variants": [{**v, "roles": []} for v in st["variants_form"]]})
+    ids = [r["role_id"] for r in fb_preview["roles"]]
+    st["variants"] = [{**v, "roles": [ids[i] for i in v["role_index"] if i < len(ids)]} for v in st["variants_form"]]
+    problems = ob.write_pack(slug, st, tpl)
+    if tpl:
+        tpl.unlink(missing_ok=True)
+    if problems:
+        st["step"] = 5
+        ob.save_state(slug, st)
+        flash("Not saved yet: " + " ".join(problems)[:600], "warn")
+        return redirect(url_for("setup_step", slug=slug))
+    st["step"] = 6
+    ob.save_state(slug, st)
+    return redirect(url_for("setup_step", slug=slug))
+
+
+@app.post("/setup/<slug>/use")
+def setup_use(slug: str):
+    from modules import settings as cfg
+    ob.use_profile(slug)
+    cfg.CFG["pipeline"]["profile"] = slug          # this control centre switches straight away
+    ob.state_path(slug).unlink(missing_ok=True)    # setup finished
+    flash(f"Profile '{slug}' is now active. Press Run now on the Dashboard to search with it.", "ok")
+    return redirect(url_for("dashboard"))
 
 
 # --------------------------------------------------------------------------- #
