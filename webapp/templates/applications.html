@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block body %}
+<h1>Applications</h1><p class="muted small">Your tracker. Runs never overwrite what you save here.</p>
+{% for r in rows %}<div class="card"><form method="post"><input type="hidden" name="job_id" value="{{ r.job_id }}">
+<div class="row spread"><div><div class="title"><a href="{{ r.application_url }}" target="_blank" rel="noopener">{{ r.title }}</a></div>
+<div class="muted small">{{ r.company }} · {{ r.location }}{% if r.score %} · {{ r.score }}%{% endif %}
+{% if r.status and r.status != 'resume_ready' %} <span class="tag {{ r.status }}">{{ r.status }}</span>{% endif %}</div></div>
+<div class="row">{% if r.application_url %}<a class="btn primary" href="{{ r.application_url }}" target="_blank" rel="noopener">Open job posting ↗</a>{% endif %}
+{% if r.resume_pdf %}<a class="btn" href="/file?p={{ r.resume_pdf|urlencode }}" target="_blank">Resume</a>{% endif %}</div></div>
+<div class="grid" style="margin-top:6px"><div><label>Status</label><select name="status">{% for s in statuses %}<option value="{{s}}" {{ 'selected' if r.status==s }}>{{ s|replace('_',' ') }}</option>{% endfor %}</select></div>
+<div><label>Applied on</label><input type="date" name="applied_on" value="{{ r.applied_on }}"></div></div>
+<label>Notes</label><input type="text" name="notes" value="{{ r.notes }}">
+<p><button class="btn primary">Save</button></p></form></div>
+{% else %}<div class="card muted">No resumes built yet.</div>{% endfor %}{% endblock %}

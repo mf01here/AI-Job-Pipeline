@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% block body %}
+<h1>Dashboard</h1>
+<div class="card"><div class="row spread"><div>
+<div class="title">Searching for</div>
+<div class="muted small">{{ search.roles|join(', ') or '—' }} · {{ search.locations|join(', ') or 'any location' }} · {{ search.sites|join(', ') }}{% if search.scan_company_portals %} · company portals{% endif %}</div>
+<div class="muted small">Morning run: {% if search.schedule.enabled %}on, {{ search.schedule.time }}{% else %}off{% endif %} · <a href="/settings">change</a></div></div>
+<div class="row">
+<form class="inline" method="post" action="/run"><input type="hidden" name="mode" value="topup"><button class="btn primary" {% if task.running %}disabled{% endif %}>Run now</button></form>
+<form class="inline" method="post" action="/run"><input type="hidden" name="mode" value="fresh"><button class="btn" {% if task.running %}disabled{% endif %}>Full refresh</button></form>
+</div></div></div>
+
+{% if task.running %}<div class="card" id="taskcard"><div class="row spread"><div><div class="title">Running: {{ task.label }}</div>
+<div class="muted small" id="taskmeta">Started {{ task.started_hm }}, {{ task.minutes }} min so far</div></div>
+<form class="inline" method="post" action="/stop"><button class="btn bad">Stop</button></form></div>
+<pre class="log" id="tasklog">{{ task.tail }}</pre></div>{% endif %}
+{% if not task.running and task.label and task.finished_ago_s is defined and task.finished_ago_s < 180 %}
+<div class="toast" id="toast" role="status">Finished: {{ task.label }}. Started {{ task.started_hm }}, took {{ task.minutes }} min.</div>{% endif %}
+
+<section class="hero-funnel"><h2>Your pipeline</h2>{{ ch.funnel }}</section>
+
+<div class="chart-grid">
+<div class="chart-card"><h2>Match scores</h2>{{ ch.scores }}
+<div class="legend"><span><i style="background:var(--bad)"></i>not a match</span><span><i style="background:var(--sun)"></i>review zone</span><span><i style="background:var(--ok)"></i>approval zone</span></div></div>
+<div class="chart-card"><h2>Recent runs</h2>{{ ch.runs }}
+<div class="legend"><span><i style="background:var(--uv)"></i>new jobs</span><span><i style="background:var(--ok);border-radius:50%"></i>newly approved</span><span><i style="background:var(--bad)"></i>run with a problem</span></div></div>
+<div class="chart-card"><h2>Where jobs come from</h2>{{ ch.sources }}</div>
+<div class="chart-card"><h2>Approved by company</h2>{{ ch.companies }}</div>
+</div>
+
+<h2>Last run</h2>
+{% if last %}<div class="card small"><div class="title">{% if ran %}Ran {{ ran.when }} and took {{ ran.minutes }} min{% else %}Finished {{ last.finished|replace('T',' ') }}{% endif %}</div>
+<div class="muted">{{ last.jobs_new if last.jobs_new is not none else 0 }} new jobs, {{ last.leads or 0 }} leads waiting{% if last.linkedin_blocked %}, LinkedIn limited requests{% endif %}.</div>
+{% if last.new_approved %}<div style="margin-top:6px"><b>Newly approved</b><ul>{% for x in last.new_approved %}<li>{{x}}</li>{% endfor %}</ul></div>{% endif %}
+<div class="muted">Steps: {% for k,v in last.steps.items() %}{{k}} {% if v==0 %}<span style="color:var(--ok)">✓</span>{% elif v=='skipped' %}–{% else %}<span style="color:var(--bad)">✗</span>{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</div></div>
+{% else %}<div class="card muted">No run yet. Press Run now to start the first one.</div>{% endif %}
+<script>
+const toast=document.getElementById('toast');
+if(toast){setTimeout(()=>toast.classList.add('hide'),8000);toast.addEventListener('click',()=>toast.classList.add('hide'));}
+let wasRunning={{ 'true' if task.running else 'false' }};
+async function poll(){try{const t=await (await fetch('/task')).json();
+ if(t.running){const el=document.getElementById('tasklog');if(el){el.textContent=t.tail;el.scrollTop=el.scrollHeight;}
+   const m=document.getElementById('taskmeta');if(m){m.textContent='Started '+t.started_hm+', '+t.minutes+' min so far';}
+   if(!wasRunning){location.reload();}}
+ else if(wasRunning){location.reload();}
+ wasRunning=t.running;}catch(e){}}
+setInterval(poll,4000);
+</script>{% endblock %}

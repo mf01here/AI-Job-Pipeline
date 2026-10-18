@@ -1,0 +1,133 @@
+# PipelineHQ - shared settings (committed).
+# Your personal choices go in config.local.toml (never committed), e.g.:
+#     [pipeline]
+#     profile = "yourname"
+# API keys live only in .env (see .env.example).
+
+[pipeline]
+profile = "example"       # which folder under profiles/ to use (override in config.local.toml or with --profile NAME)
+data_dir = "data"         # where jobs, results and drafts are written
+
+# Phase 3 gates (pure Python scoring)
+[gates]
+hard_gate_pct = 40          # hard-requirement match below this -> archived_below_threshold
+score_gate_pct = 60         # overall score at or above this -> approved_for_phase4
+hard_weight = 0.70
+preferred_weight = 0.30
+partial_credit = 0.5
+limited_tool_in_title_review = true   # job title names a skill you rated novice/limited (e.g. CATIA) -> review, not auto-approve
+variant_tie_pct = 3         # resume variants this close in score: the one whose typical titles match the job wins
+min_hard_for_approval = 3   # a score built on fewer hard requirements is not trusted
+min_desc_chars = 300        # shorter postings are not analysed at all
+ground_min_share = 0.5      # share of a requirement's key words that must appear in the job text
+
+[analysis]
+max_requirements = 15
+max_desc_chars = 9000
+max_attempts = 3
+context_warn_tokens = 14000   # warn when a prompt nears the 16384 context length
+
+[scraper]
+freshness_days = 30          # job boards: ignore listings older than this (override per run: --days)
+linkedin = true              # include LinkedIn (public guest job pages only, never your account)
+watch_max_results = 10       # jobs per watched company per job board (watch list is in your domain.toml)
+skip_portals = ["cyient", "hcltech"]   # registry entries to ignore: Cyient's Workday refuses requests;
+                                       # HCLTech's feed has no city search and shows only 20 jobs worldwide.
+                                       # Both are covered by the watch list in domain.toml instead.
+linkedin_request_budget = 45  # LinkedIn requests per run; it starts refusing around 40-50 in a short period
+linkedin_watch_per_run = 2    # watched companies that get LinkedIn time each run (they take turns)
+linkedin_engine = "builtin"  # "builtin" = our own slow, polite fetcher; "jobspy" = the library's (often blocked)
+linkedin_max_results = 25    # per LinkedIn search; one search per location
+linkedin_pause_seconds = 8          # average wait before EVERY LinkedIn request (randomised 60-150%)
+linkedin_break_every = [6, 10]      # after a random 6-10 requests, take a longer break...
+linkedin_break_seconds = [30, 75]   # ...of a random 30-75 seconds, like a person reading
+linkedin_experience_levels = [3, 4, 5]   # 2 entry, 3 associate, 4 mid-senior, 5 director; [] = all levels
+
+[drafting]
+max_tailored_bullets = 10   # job-relevant bullets rewritten per job; the rest are used word for word
+max_total_bullets = 26      # whole resume, about two pages (your role minimums add up to 23)
+local_attempts = 3
+cloud_attempts = 2
+min_retention = 0.65        # share of the original's key words that must survive a rewrite
+max_growth = 1.4            # a rewrite may be at most 1.4x the original length (+30 characters)
+
+# ---------------------------------------------------------------------------
+# Orchestrator: which model to load automatically for a run (LM Studio model key, as in "lms ls")
+[orchestrator]
+model = "qwen/qwen3.5-9b"
+context_length = 16384
+
+# ---------------------------------------------------------------------------
+# Local model server. LM Studio: http://localhost:1234/v1   Ollama: http://localhost:11434/v1
+# LM_STUDIO_BASE_URL in .env overrides base_url.
+[local_llm]
+base_url = "http://localhost:1234/v1"
+api_key = "lm-studio"
+model = ""                  # empty = detect the model currently loaded in LM Studio
+temperature = 0
+max_tokens = 6144          # a full analysis needs about 1,500-3,000 reply tokens; long postings need more
+prompt_suffix = ""
+timeout_s = 900            # give up on one model call after this many seconds
+
+# Per-model tweaks. "match" is a pattern tested against the loaded model's name; the first match wins.
+[[local_llm.model_profiles]]
+match = 'qwen3-'            # Qwen3 (e.g. qwen3-8b): switch thinking off
+prompt_suffix = "/no_think"
+max_tokens = 4096
+
+[[local_llm.model_profiles]]
+match = 'gemma-?4'          # Gemma 4: ask LM Studio to switch thinking off
+extra_body = { chat_template_kwargs = { enable_thinking = false } }
+
+[[local_llm.model_profiles]]
+match = 'qwen3\.[5-9]'      # Qwen 3.5 and newer: same request
+extra_body = { chat_template_kwargs = { enable_thinking = false } }
+
+[[local_llm.model_profiles]]
+match = 'bonsai'            # Bonsai 27B builds think before answering: give room for it
+max_tokens = 12000
+
+# ---------------------------------------------------------------------------
+# Cloud polish (Phase 4). Tried top to bottom; any provider without a key in .env is skipped.
+# Add as many as you like: any OpenAI-compatible service works. Run
+#     python modules/cloud_generator.py --check-providers
+# to test your keys and list the models each key can use.
+# A model can be overridden in .env as <NAME>_MODEL, e.g. GEMINI_MODEL=gemini-flash-latest
+[cloud]
+temperature = 0.3
+
+[[cloud.providers]]
+name = "gemini"
+base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+model = "gemini-flash-latest"
+key_env = "GEMINI_API_KEY"
+
+[[cloud.providers]]
+name = "groq"
+base_url = "https://api.groq.com/openai/v1"
+model = "openai/gpt-oss-120b"
+key_env = "GROQ_API_KEY"
+
+[[cloud.providers]]
+name = "cerebras"
+base_url = "https://api.cerebras.ai/v1"
+model = "gpt-oss-120b"
+key_env = "CEREBRAS_API_KEY"
+
+[[cloud.providers]]
+name = "nvidia"
+base_url = "https://integrate.api.nvidia.com/v1"
+model = "openai/gpt-oss-120b"
+key_env = "NVIDIA_API_KEY"
+
+[[cloud.providers]]
+name = "openrouter"         # free models end in ":free"; low daily cap, so it sits near the end
+base_url = "https://openrouter.ai/api/v1"
+model = "google/gemma-4-31b-it:free"
+key_env = "OPENROUTER_API_KEY"
+
+[[cloud.providers]]
+name = "mistral"
+base_url = "https://api.mistral.ai/v1"
+model = "mistral-small-latest"
+key_env = "MISTRAL_API_KEY"

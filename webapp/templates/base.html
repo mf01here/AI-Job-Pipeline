@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="PipelineHQ">
+<meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icon-180.png') }}">
+<link rel="icon" type="image/png" href="{{ url_for('static', filename='icon-180.png') }}">
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<title>{% block t %}PipelineHQ{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head><body>
+<meta name="theme-color" content="#000000">
+<header><div class="brand">PipelineHQ</div>
+<nav>{% set p = request.path %}
+<a href="/" class="{{ 'on' if p=='/' }}">Dashboard</a>
+<a href="/approved" class="{{ 'on' if p=='/approved' }}">Approved<span class="badge g">{{ counts.approved }}</span></a>
+<a href="/review" class="{{ 'on' if p=='/review' }}">Needs review<span class="badge a">{{ counts.review }}</span></a>
+<a href="/leads" class="{{ 'on' if p=='/leads' }}">Leads<span class="badge">{{ counts.leads }}</span></a>
+<a href="/applications" class="{{ 'on' if p=='/applications' }}">Applications<span class="badge">{{ counts.applications }}</span></a>
+<a href="/archived" class="{{ 'on' if p=='/archived' }}">Archived<span class="badge r">{{ counts.archived }}</span></a>
+<a href="/companies" class="{{ 'on' if p=='/companies' }}">Companies</a>
+<a href="/settings" class="{{ 'on' if p=='/settings' }}">Settings</a></nav></header>
+<main>{% with msgs = get_flashed_messages(with_categories=true) %}{% for c,m in msgs %}<div class="flash {{c}}">{{m}}</div>{% endfor %}{% endwith %}
+{% block body %}{% endblock %}</main></body></html>

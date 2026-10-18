@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% block body %}
+<h1>Companies</h1>
+<form method="post" action="/companies/add" class="card">
+<h2 style="margin-top:0">Add a company</h2>
+<label>Company name</label><input type="text" name="name" placeholder="e.g. Siemens" required>
+<label>Careers link (optional)</label><input type="text" name="url" placeholder="Careers page, job search page, or one job posting">
+<label>Other names it posts under (optional, comma separated)</label><input type="text" name="aliases" placeholder="e.g. Siemens Energy, Siemens Healthineers, Siemens Technology and Services">
+<label style="font-weight:400"><input type="checkbox" name="watch" checked> Also search LinkedIn, Indeed and Naukri for this company</label>
+<p class="muted small">The link is checked straight away: if its job platform is one the pipeline can read, the company becomes a direct portal and is tested with your current search. Adding takes a few seconds.</p>
+<p><button class="btn primary">Add company</button></p></form>
+
+<h2>Companies you added <span class="muted small">({{ items|length }})</span></h2>
+{% for c in items %}{% set ci = loop.index0 %}<div class="card">
+<div class="row spread"><div class="title">{{ c.name }}</div>
+<form class="inline" method="post" action="/companies/{{ ci }}/remove"><button class="btn bad">Remove company</button></form></div>
+{% for l in c.links %}<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line-soft)">
+<div class="row"><span class="tag {{ 'met' if l.supported else 'partial' }}">{{ l.name or l.platform }}</span>
+<a class="small" href="{{ l.url }}" target="_blank" rel="noopener">{{ l.url|truncate(70) }}</a></div>
+<div class="small muted" style="margin-top:4px">{% if l.supported %}{{ l.test.message if l.test else 'Not tested yet.' }}{% else %}Not readable directly; searched on the job boards instead.{% endif %}</div>
+<div class="row" style="margin-top:6px">{% if l.supported %}<form class="inline" method="post" action="/companies/{{ ci }}/test"><input type="hidden" name="link" value="{{ loop.index0 }}"><button class="btn">Test again</button></form>{% endif %}
+<form class="inline" method="post" action="/companies/{{ ci }}/remove-link"><input type="hidden" name="link" value="{{ loop.index0 }}"><button class="btn">Remove link</button></form></div></div>
+{% else %}<div class="small muted" style="margin-top:6px">No careers link: searched on the job boards by name.</div>{% endfor %}
+<form method="post" action="/companies/{{ ci }}/update" style="margin-top:10px">
+<label>Other names</label><input type="text" name="aliases" value="{{ c.aliases|join(', ') }}">
+<div class="row" style="margin-top:6px"><label style="font-weight:400;margin:0"><input type="checkbox" name="watch" {{ 'checked' if c.watch }}> Also search job boards</label>
+<button class="btn">Save</button></div></form>
+<form method="post" action="/companies/add" class="row" style="margin-top:8px"><input type="hidden" name="name" value="{{ c.name }}">
+<input type="text" name="url" placeholder="Add another careers link (e.g. a subsidiary's site)" style="flex:1;min-width:200px"><button class="btn">Add link</button></form>
+</div>{% else %}<div class="card muted">None yet. Add the first one above.</div>{% endfor %}
+
+{% if tally %}<h2>Platforms the pipeline can't read yet</h2>
+<div class="card small">{% for name,n in tally %}<div>{{ name }}: {{ n }} compan{{ 'y' if n==1 else 'ies' }}</div>{% endfor %}
+<div class="muted" style="margin-top:6px">If one platform keeps appearing, it is the next one worth adding support for.</div></div>{% endif %}
+
+<h2>Already in your setup</h2>
+<div class="card small"><div><b>Direct career portals:</b> {{ builtin|join(', ') or 'none' }}</div>
+<div style="margin-top:6px"><b>Watch list in your profile:</b> {{ profile_watch|join(', ') or 'none' }}</div>
+{% if skipped %}<div class="muted" style="margin-top:6px">Portals switched off in config.toml: {{ skipped|join(', ') }}</div>{% endif %}</div>
+{% endblock %}

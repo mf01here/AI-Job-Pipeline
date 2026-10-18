@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Fictional sample. Resume variants: which roles, bullets and skills each uses.",
+  "candidate": {
+    "name": "ALEX MORGAN",
+    "phone": "+91 00000 00000",
+    "email": "alex.morgan@example.com",
+    "linkedin": "linkedin.com/in/example",
+    "location": "Pune, India"
+  },
+  "flags": {
+    "include_languages": false,
+    "google_pm_cert_on_all_resumes": true
+  },
+  "target_roles": [
+    {
+      "target_id": "mechanical_design",
+      "label": "Mechanical Design Engineer",
+      "matches_job_titles": [
+        "Mechanical Design Engineer",
+        "Design Engineer",
+        "Product Design Engineer"
+      ],
+      "headline_options": [
+        "Mechanical Design Engineer  |  Sheet Metal & Machined Parts  |  Siemens NX & Teamcenter"
+      ],
+      "summary_ingredients": [
+        "5+ years designing aircraft interior structures and industrial gearbox parts",
+        "Releases drawings with GD&T and owns BOMs in Teamcenter",
+        "Designed assembly fixtures that cut shop-floor setup time"
+      ],
+      "summary_from": [
+        0,
+        1,
+        2
+      ],
+      "role_order": [
+        "acme_design",
+        "gears_2017"
+      ],
+      "bullet_selection": {
+        "acme_design": {
+          "lead_with": [
+            "acm_001",
+            "acm_002"
+          ],
+          "then": [
+            "acm_003",
+            "acm_004",
+            "acm_005"
+          ],
+          "min_bullets": 3,
+          "max_bullets": 5
+        },
+        "gears_2017": {
+          "lead_with": [
+            "dg_001"
+          ],
+          "then": [
+            "dg_003",
+            "dg_002"
+          ],
+          "min_bullets": 2,
+          "max_bullets": 3
+        }
+      },
+      "skills_sections_order": [
+        "design_track.cad_and_plm",
+        "design_track.design_methods"
+      ],
+      "include_additional": [
+        "add_001"
+      ],
+      "include_education_project": true
+    },
+    {
+      "target_id": "change_analyst",
+      "label": "Engineering Change Analyst",
+      "matches_job_titles": [
+        "Configuration Management Analyst",
+        "Engineering Change Analyst",
+        "PLM Analyst"
+      ],
+      "headline_options": [
+        "Engineering Change & Configuration Analyst  |  ECR / ECN  |  Teamcenter"
+      ],
+      "summary_ingredients": [
+        "5+ years in aerospace engineering, now focused on change and configuration management",
+        "Processes ECR / ECN and keeps configuration records accurate in Teamcenter"
+      ],
+      "summary_from": [
+        0,
+        1
+      ],
+      "role_order": [
+        "acme_support",
+        "gears_2017"
+      ],
+      "bullet_selection": {
+        "acme_support": {
+          "lead_with": [
+            "acs_001",
+            "acs_002"
+          ],
+          "min_bullets": 2,
+          "max_bullets": 2
+        },
+        "gears_2017": {
+          "lead_with": [
+            "dg_001"
+          ],
+          "min_bullets": 1,
+          "max_bullets": 1
+        }
+      },
+      "skills_sections_order": [
+        "support_track.process_and_domain",
+        "support_track.systems_and_tools",
+        "design_track.cad_and_plm"
+      ],
+      "include_additional": [],
+      "include_education_project": false
+    }
+  ],
+  "shared_blocks": {
+    "certifications": [
+      "GD&T Fundamentals — Example Training Co.",
+      "Project Management Certificate — in progress"
+    ]
+  }
+}

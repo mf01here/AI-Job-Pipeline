@@ -1,0 +1,91 @@
+# Domain rules for the sample profile (mechanical / aerospace). Copy and adapt for your profession.
+# Patterns are regular expressions, matched case-insensitively against lower-case text.
+
+# Terms that must NEVER appear in a tailored bullet (confirmed false claims from old resumes).
+# The Phase 4 guard rejects any rewrite containing one of these.
+forbidden_terms = []   # claims that must never appear in a tailored bullet (e.g. things you removed from old resumes)
+
+# Job titles containing any of these words are dropped by the scraper before analysis (whole words only).
+exclude_title_words = ["intern", "interns", "internship", "internships", "apprentice", "apprenticeship",
+                       "student", "students", "trainee", "fresher", "freshers",
+                       # IT / software roles that full-text job feeds return for "engineer"
+                       "data engineer", "software", "developer", "devops", "devsecops", "cloud", "snowflake",
+                       "salesforce", "servicenow developer", "full stack", "fullstack", "frontend", "front end",
+                       "backend", "back end", "java", "python developer", ".net", "react", "node.js", "sre",
+                       "site reliability", "data scientist", "machine learning", "ml engineer", "ai engineer",
+                       "network engineer", "security engineer", "cyber", "qa automation", "sdet", "big data",
+                       "power bi developer", "etl", "mainframe"]
+
+# Named tools. If a requirement names one of these, a "met" verdict needs evidence that names one of them
+# too (e.g. CATIA cannot be proven by a Siemens NX line).
+tool_terms = ["CATIA", "Siemens NX", "NX", "Unigraphics", "SolidWorks", "Creo", "Pro/E", "AutoCAD", "Inventor",
+              "ANSYS", "Abaqus", "Nastran", "Patran", "HyperMesh", "LS-DYNA", "Teamcenter", "Windchill", "Enovia",
+              "3DEXPERIENCE", "SAP", "MATLAB", "Simulink", "Python", "DELMIA", "GD&T", "ServiceNow", "Looker Studio",
+              "Jira", "Power BI", "Tableau"]
+
+# Risk flags raised by the model that must stop an automatic approval.
+sensitive_flag = '\bstudents?\b|\bintern(ship)?s?\b|visa|work permit|work authori[sz]ation|right to work|clearance|citizen|nationality|native (speaker|level)|\b(french|german|spanish|japanese|dutch|arabic|mandarin)\b'
+
+# Hard blockers stated outright in the job text itself.
+sensitive_text = 'currently (pursuing|enrolled)|\bstudents? only\b|\binternships?\b|security clearance|clearance (is )?required|must (be|hold|have) [^.]{0,40}citizen|\b(eu|us|uk|indian) citizens? only|no (visa )?sponsorship|work authori[sz]ation (is )?required'
+
+# Requirement wording -> words that legitimately prove it in a resume line.
+# Used by Python to judge whether a quoted Fact Bank line really relates to the requirement.
+[[concepts]]
+requirement = '\bcad\b|computer.aided'
+evidence = '3d|model|drawing|catia|siemens nx|\bnx\b|solidworks|creo|autocad|inventor|cad'
+
+[[concepts]]
+requirement = 'communicat|stakeholder|collaborat|interface with|customer|client'
+evidence = 'client|stakeholder|contact|present|cross-functional|coordinat|collaborat|review|communicat|interface|supplier|vendor'
+
+[[concepts]]
+requirement = 'verif|validat|\btest'
+evidence = 'test|verif|valid|analysis|simulat|fea|cfd|ansys|inspect|qualif'
+
+[[concepts]]
+requirement = 'analy|simulat|calculat|fea|cfd'
+evidence = 'analy|simulat|fea|cfd|ansys|calculat|stress|thermal|fluid|model'
+
+[[concepts]]
+requirement = 'document|report|specification'
+evidence = 'document|report|specif|drawing|icd|spec|procedure|record'
+
+[[concepts]]
+requirement = 'problem.solv|troubleshoot|root cause|issue'
+evidence = 'root cause|solution|resolv|improv|redesign|identif|troubleshoot|fix|reduc'
+
+[[concepts]]
+requirement = 'leader|mentor|guid|coach|supervis|lead'
+evidence = 'lead|team|mentor|coordinat|guid|supervis|onboard|interview|own'
+
+[[concepts]]
+requirement = 'change management|configuration|plm|ecr|ecn'
+evidence = 'change|configuration|plm|teamcenter|ecr|ecn|bom|lifecycle|revision'
+
+[[concepts]]
+requirement = 'review|pdr|cdr'
+evidence = 'review|pdr|cdr|present|defend|audit'
+
+[[concepts]]
+requirement = 'manufactur|assembl|production|industriali'
+evidence = 'manufactur|assembl|production|industrial|fabricat|process|dfm|dfa|machin'
+
+[[concepts]]
+requirement = 'team|collaborat'
+evidence = 'team|lead|offshore|cross-functional|peer|collaborat|coordinat'
+
+[[concepts]]
+requirement = 'data analy|analytics|dashboard|data-driven'
+evidence = 'kpi|looker|dashboard|report|analys|excel|sheets'
+
+[[concepts]]
+requirement = 'english|language|communication skills'
+evidence = 'english'
+
+# ---------------------------------------------------------------------------
+# Company watch list: searched on the job boards (LinkedIn, Indeed, Naukri) with your role on every run.
+# (You can also add companies from the control centre's Companies page.)
+[[watch_companies]]
+name = "Example Engineering Services"
+aliases = ["Example Engineering Services Pvt Ltd"]

@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block body %}<p><a href="javascript:history.back()">← back</a></p>
+<h1>{{ j.job.title }} <span class="muted small">@ {{ j.job.company }}</span></h1>
+<div class="row" style="margin-bottom:10px">{% if j.job.application_url %}<a class="btn primary" href="{{ j.job.application_url }}" target="_blank" rel="noopener">Open job posting ↗</a>{% endif %}
+{% if j.pdf %}<a class="btn" href="/file?p={{ j.pdf|urlencode }}" target="_blank">Resume PDF</a>{% endif %}</div>
+<div class="card"><pre style="white-space:pre-wrap;font:inherit;margin:0">{{ text }}</pre></div>
+<form method="post" action="/job/{{ j.key }}/rebuild"><input type="hidden" name="back" value="/approved"><button class="btn">Redraft this resume</button></form>{% endblock %}

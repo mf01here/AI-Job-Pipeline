@@ -1,0 +1,160 @@
+{
+  "schema_version": "2.0",
+  "last_updated": "2026-10-18",
+  "candidate_meta": {
+    "name": "ALEX MORGAN",
+    "note": "Fictional sample profile for demonstration. Replace with your own (see README)."
+  },
+  "roles": [
+    {
+      "role_id": "acme_design",
+      "employer": "Acme Aerostructures",
+      "title": "Design Engineer",
+      "location": "Pune",
+      "start": "2021-06",
+      "end": "Present",
+      "track": "design",
+      "context": "Aircraft interior structures: galley and stowage modules.",
+      "bullets": [
+        {
+          "id": "acm_001",
+          "text": "Design and detail sheet metal and machined brackets in Siemens NX for galley and stowage modules.",
+          "category": "design"
+        },
+        {
+          "id": "acm_002",
+          "text": "Release manufacturing and installation drawings with GD&T, and own the BOM in Teamcenter.",
+          "category": "documentation"
+        },
+        {
+          "id": "acm_003",
+          "text": "Run Digital Mock-Up (DMU) clash checks on large assemblies and resolve interferences before release.",
+          "category": "design"
+        },
+        {
+          "id": "acm_004",
+          "text": "Present design changes at Preliminary and Critical Design Reviews (PDR / CDR).",
+          "category": "reviews"
+        },
+        {
+          "id": "acm_005",
+          "text": "Mentor two junior engineers on NX modelling standards and drawing checks.",
+          "category": "leadership"
+        }
+      ]
+    },
+    {
+      "role_id": "acme_support",
+      "employer": "Acme Aerostructures",
+      "title": "Engineering Change Analyst",
+      "location": "Pune",
+      "start": "2021-06",
+      "end": "Present",
+      "track": "support",
+      "context": "Configuration management for the interiors programme.",
+      "bullets": [
+        {
+          "id": "acs_001",
+          "text": "Process engineering change requests (ECR / ECN) and keep configuration records accurate in Teamcenter.",
+          "category": "change"
+        },
+        {
+          "id": "acs_002",
+          "text": "Track change-request KPIs in Excel and report weekly status to the programme lead.",
+          "category": "reporting"
+        }
+      ]
+    },
+    {
+      "role_id": "gears_2017",
+      "employer": "Deccan Gears Pvt Ltd",
+      "title": "Graduate Engineer",
+      "location": "Pune",
+      "start": "2017-07",
+      "end": "2021-05",
+      "track": "design",
+      "context": "Industrial gearbox housings and fixtures.",
+      "bullets": [
+        {
+          "id": "dg_001",
+          "text": "Modelled gearbox housings and covers in Siemens NX, working to casting and machining constraints.",
+          "category": "design"
+        },
+        {
+          "id": "dg_002",
+          "text": "Supported basic stress checks on housing ribs with the analysis team.",
+          "category": "analysis"
+        }
+      ],
+      "projects": [
+        {
+          "project_name": "Assembly fixtures",
+          "bullets": [
+            {
+              "id": "dg_003",
+              "text": "Designed welding and assembly fixtures for the housing line, cutting setup time on the shop floor.",
+              "category": "tooling"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "skills": {
+    "design_track": {
+      "cad_and_plm": [
+        "Siemens NX — part, assembly and sheet metal modelling",
+        "Teamcenter",
+        "CATIA V5 (novice)"
+      ],
+      "design_methods": [
+        "GD&T and tolerance stack-up",
+        "DFM / DFA",
+        "Fixture and tooling design"
+      ]
+    },
+    "support_track": {
+      "process_and_domain": [
+        "Engineering change management (ECR / ECN)",
+        "Configuration management"
+      ],
+      "systems_and_tools": [
+        "Excel",
+        "Teamcenter"
+      ]
+    }
+  },
+  "education": {
+    "degree": "B.E. Mechanical Engineering",
+    "institution": "Example Institute of Technology, Pune",
+    "year": 2017,
+    "final_year_project": {
+      "description": "Designed and built a pedal-powered water pump prototype as a team of four."
+    }
+  },
+  "certifications": [
+    {
+      "name": "GD&T Fundamentals",
+      "issuer": "Example Training Co.",
+      "status": "completed"
+    },
+    {
+      "name": "Project Management Certificate",
+      "issuer": "Example Online",
+      "status": "in progress"
+    }
+  ],
+  "additional": [
+    {
+      "id": "add_001",
+      "text": "Volunteer mentor for a college Formula Student team (chassis design).",
+      "category": "additional"
+    }
+  ],
+  "languages": [
+    "English (fluent)"
+  ],
+  "removed_items": {
+    "items": []
+  }
+}

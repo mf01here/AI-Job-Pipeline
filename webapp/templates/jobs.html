@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% block body %}
+<h1>{{ title }} <span class="muted small">({{ jobs|length }})</span></h1>
+{% if kind=='review' %}<p class="muted small">Each job was held for a reason shown below. Approve to draft its resume, or archive it so it never comes back.</p>{% endif %}
+{% for j in jobs %}<div class="card">
+<div class="row"><div class="score {{ 'good' if (j.score or 0) >= 60 else ('mid' if (j.score or 0) >= 40 else 'low') }}">{{ '%.0f'|format(j.score or 0) }}%</div>
+<div style="flex:1;min-width:200px"><div class="title"><a href="{{ j.job.application_url }}" target="_blank" rel="noopener">{{ j.job.title }}</a></div>
+<div class="muted small">{{ j.job.company }} · {{ j.job.location }}{% if j.variant %} · {{ j.variant|replace('_',' ') }}{% endif %}
+{% if j.ledger and j.ledger not in ('resume_ready',) %} · <span class="tag {{ j.ledger }}">{{ j.ledger }}{% if j.applied_on %} {{ j.applied_on }}{% endif %}</span>{% endif %}</div></div></div>
+{% if kind!='approved' and j.reasons %}<div class="small" style="margin-top:6px">{% for r in j.reasons %}<div>• {{ r }}</div>{% endfor %}</div>{% endif %}
+{% if j.error %}<div class="small" style="color:var(--bad)">{{ j.error }}</div>{% endif %}
+<div class="row" style="margin-top:8px">
+{% if j.job.application_url %}<a class="btn primary" href="{{ j.job.application_url }}" target="_blank" rel="noopener">Open job posting ↗</a>{% endif %}
+{% if j.pdf %}<a class="btn" href="/file?p={{ j.pdf|urlencode }}" target="_blank">Resume PDF</a>{% endif %}
+{% if j.docx %}<a class="btn" href="/file?p={{ j.docx|urlencode }}&dl=1">Word</a>{% endif %}
+{% if j.has_draft %}<a class="btn" href="/draft/{{ j.key }}">Draft</a>{% endif %}
+{% set back = request.path %}
+{% if kind=='review' or (kind=='archived') %}<form class="inline" method="post" action="/job/{{ j.key }}/approve"><input type="hidden" name="back" value="{{ back }}"><button class="btn ok">Approve</button></form>{% endif %}
+{% if kind=='approved' and j.ledger!='applied' %}<form class="inline" method="post" action="/job/{{ j.key }}/applied"><input type="hidden" name="back" value="{{ back }}"><button class="btn ok">Mark applied</button></form>{% endif %}
+{% if kind!='archived' %}<form class="inline" method="post" action="/job/{{ j.key }}/archive"><input type="hidden" name="back" value="{{ back }}"><button class="btn bad">Archive</button></form>
+{% elif j.status=='user_archived' %}<form class="inline" method="post" action="/job/{{ j.key }}/restore"><input type="hidden" name="back" value="{{ back }}"><button class="btn">Restore</button></form>{% endif %}
+</div>
+<details><summary>Requirements ({{ j.reqs|selectattr('status','equalto','met')|list|length }} met, {{ j.reqs|selectattr('status','equalto','partial')|list|length }} partial, {{ j.reqs|selectattr('status','equalto','unmet')|list|length }} unmet)</summary>
+<ul class="reqs">{% for r in j.reqs %}<li><span class="tag {{ r.status }}">{{ r.status }}</span> {{ r.requirement_text }} <span class="muted small">({{ 'required' if r.type=='hard_requirement' else 'preferred' }})</span>
+{% if r.verbatim_quote %}<div class="quote">“{{ r.verbatim_quote }}”</div>{% endif %}</li>{% endfor %}</ul>
+{% if j.job.application_url %}<div class="small" style="margin:6px 0"><b>Job link:</b> <a href="{{ j.job.application_url }}" target="_blank" rel="noopener" style="word-break:break-all">{{ j.job.application_url }}</a></div>{% endif %}
+{% if j.missing %}<div class="small"><b>Not in your Fact Bank:</b> {{ j.missing|join(', ') }}</div>{% endif %}
+{% if j.variant_scores %}<div class="small muted">Variant scores: {% for k,v in j.variant_scores.items() %}{{ k|replace('_',' ') }} {{ '%.0f'|format(v) }}%{% if not loop.last %} · {% endif %}{% endfor %}</div>{% endif %}
+</details></div>
+{% else %}<div class="card muted">Nothing here.</div>{% endfor %}{% endblock %}

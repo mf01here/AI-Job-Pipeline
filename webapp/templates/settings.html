@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% block body %}
+<h1>Settings</h1><form method="post" class="card">
+<label>Roles (one per line)</label><textarea name="roles">{{ s.roles|join('\n') }}</textarea>
+<label>Locations (one per line; leave empty for anywhere in the country)</label><textarea name="locations">{{ s.locations|join('\n') }}</textarea>
+<label>Country</label><input type="text" name="country" value="{{ s.country }}">
+<label>Job boards</label><div class="row">{% for site in ['indeed','naukri','linkedin'] %}<label style="font-weight:400"><input type="checkbox" name="site_{{site}}" {{ 'checked' if site in s.sites }}> {{ site|capitalize }}</label>{% endfor %}</div>
+<label><input type="checkbox" name="portals" {{ 'checked' if s.scan_company_portals }}> <span style="font-weight:400">Also search my registered company career portals</span></label>
+<label>Title matching</label><select name="title_match"><option value="broad" {{ 'selected' if s.title_match=='broad' }}>Broad (any of my role words)</option><option value="strict" {{ 'selected' if s.title_match=='strict' }}>Strict (most of my role words)</option></select>
+<div class="grid"><div><label>Ignore listings older than (days)</label><input type="number" name="max_age_days" value="{{ s.max_age_days }}" min="1"></div>
+<div><label>Full refresh every (days)</label><input type="number" name="full_refresh_every_days" value="{{ s.full_refresh_every_days }}" min="1"></div></div>
+<h2>Morning run</h2>
+<label><input type="checkbox" name="schedule_enabled" {{ 'checked' if s.schedule.enabled }}> <span style="font-weight:400">Run automatically every day</span></label>
+<label>Time</label><input type="time" name="schedule_time" value="{{ s.schedule.time }}">
+<p class="muted small">{% if not st.mac %}Scheduling works on macOS only.{% elif st.schedule.enabled and st.morning_installed %}Scheduled: runs every day at {{ st.schedule.time }}. If the Mac is asleep then, it runs as soon as the Mac wakes.{% elif st.schedule.enabled %}Saved but not installed yet: press Save settings.{% else %}Off.{% endif %}</p>
+<h2>iPhone notification</h2>
+<label>ntfy topic (optional)</label><input type="text" name="ntfy_topic" value="{{ s.notify.ntfy_topic }}" placeholder="e.g. my-jobs-7k2q">
+<p class="muted small">Install the free “ntfy” app on your iPhone and subscribe to the same topic name. Pick something hard to guess.</p>
+<p><button class="btn primary">Save settings</button></p></form>
+<form method="post" action="/settings/test-notification"><button class="btn">Send a test notification</button></form>
+
+<h2>Keep the control centre running</h2>
+<div class="card"><p class="small" style="margin-top:0">{% if st.background %}It runs in the background and starts by itself when you log in. You do not need Terminal open.{% else %}It runs only while its Terminal window is open. Turn this on so your iPhone can reach it any time.{% endif %}</p>
+<form method="post" action="/settings/background"><input type="hidden" name="on" value="{{ '0' if st.background else '1' }}">
+<button class="btn {{ '' if st.background else 'primary' }}">{{ 'Stop running in the background' if st.background else 'Run in the background' }}</button></form></div>
+
+<h2>iPhone access</h2>
+<div class="card small">{% if passcode_on %}<p style="margin-top:0">On. On your iPhone (same Wi-Fi), open one of these in Safari:</p>
+<ul>{% for u in urls %}<li><b>{{ u }}</b></li>{% endfor %}</ul>
+<p>Then tap Share, choose <b>Add to Home Screen</b>, and it opens like an app.</p>
+<form method="post" action="/settings/passcode"><button class="btn bad" name="action" value="off">Turn iPhone access off</button></form>
+{% else %}<p style="margin-top:0">Off: the control centre only answers on this Mac. Choose a passcode to open it on your home Wi-Fi.</p>
+<form method="post" action="/settings/passcode" class="row"><input type="password" name="passcode" placeholder="At least 4 letters or digits" style="flex:1;min-width:180px" autocomplete="new-password">
+<button class="btn primary" name="action" value="set">Turn on iPhone access</button></form>{% endif %}
+<p class="muted">Only devices on your home network can reach it, and they need the passcode. To keep the Mac reachable, in System Settings → Energy turn on “Prevent automatic sleeping when the display is off”.</p></div>
+{% endblock %}

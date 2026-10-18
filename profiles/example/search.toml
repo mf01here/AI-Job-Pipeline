@@ -1,0 +1,17 @@
+# What the daily run searches for. Edited by the control centre's Settings page.
+
+roles = ["Design Engineer"]
+locations = ["Pune"]
+country = "India"
+sites = ["indeed", "naukri", "linkedin"]
+scan_company_portals = true
+title_match = "broad"
+max_age_days = 30
+full_refresh_every_days = 7
+
+[schedule]
+enabled = false
+time = "06:30"
+
+[notify]
+ntfy_topic = ""

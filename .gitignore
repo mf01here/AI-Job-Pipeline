@@ -1,0 +1,23 @@
+# ---- Personal data: never committed ----
+.env
+config.local.toml
+data/
+profiles/*
+!profiles/example/
+backup_before_*/
+*.log
+run*.log
+phase4.log
+scrape.log
+test_run.log
+
+# ---- Python / tools ----
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.zip
+
+# ---- macOS ----
+.DS_Store

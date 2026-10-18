@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block body %}
+<h1>Leads <span class="muted small">({{ leads|length }})</span></h1>
+<p class="muted small">These jobs were found without a readable description (often Naukri). Open the link, copy the full job description, paste it here, and it is scored like any other job.</p>
+{% for l in leads %}<div class="card"><div class="title"><a href="{{ l.url }}" target="_blank" rel="noopener">{{ l.title }}</a></div>
+<div class="muted small">{{ l.company }} · {{ l.location }} · {{ l.source }} · found {{ l.found }}</div>
+<p style="margin:8px 0"><a class="btn primary" href="{{ l.url }}" target="_blank" rel="noopener">Open job posting ↗</a></p>
+<form method="post"><input type="hidden" name="url" value="{{ l.url }}">
+<label>Job description</label><textarea name="description" placeholder="Paste the full job description here"></textarea>
+<div class="row" style="margin-top:8px"><button class="btn primary" name="action" value="paste">Score this job</button>
+<button class="btn bad" name="action" value="dismiss">Remove lead</button></div></form></div>
+{% else %}<div class="card muted">No leads right now.</div>{% endfor %}{% endblock %}
