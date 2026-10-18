@@ -57,6 +57,9 @@ These are enforced in code (and covered by the tests), not left to the model:
 - In-progress certificates are never evidence; removed claims are blocked as forbidden terms.
 - Rewrites may not add numbers, tools or acronyms, drop qualifiers ("when consulted", "basic", "supported"),
   change tense, or drop technical terms; any violation falls back to your original wording.
+- Every rewrite is then read by a **critic** (a second model) for natural, truthful wording: it can approve it,
+  improve it (the improvement passes the same guard again) or send it back to your original wording. A rule-based
+  check also reverts clumsy repetition such as "delivering deliverables", even when no critic is available.
 - Visa, clearance, language or student-only postings are never auto-approved.
 
 ## The control centre

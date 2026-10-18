@@ -45,6 +45,7 @@ linkedin_experience_levels = [3, 4, 5]   # 2 entry, 3 associate, 4 mid-senior, 5
 
 [drafting]
 max_tailored_bullets = 10   # job-relevant bullets rewritten per job; the rest are used word for word
+critic = "auto"             # second reader for rewritten bullets: auto (cloud if a key works, else local), cloud, local, off
 max_total_bullets = 26      # whole resume, about two pages (your role minimums add up to 23)
 local_attempts = 3
 cloud_attempts = 2

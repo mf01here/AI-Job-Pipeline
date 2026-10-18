@@ -71,6 +71,7 @@ MIN_RETENTION = float(_D["min_retention"])
 MAX_GROWTH = float(_D["max_growth"])
 STRONG = 1.5   # relevance at or above this = the bullet's text was quoted as evidence for a requirement
 MAX_TOTAL = int(_D.get("max_total_bullets", 26))     # whole resume; about two pages
+CRITIC_MODE = str(_D.get("critic", "auto")).lower()   # auto | cloud | local | off
 TITLE_BOOST = 1.5                                     # per distinctive job-title word a bullet mentions
 # Words that limit scope. If the original has one, the rewrite must keep it (no quiet inflation).
 QUALIFIERS = ["when consulted", "basic", "supported", "assisted", "contributed", "helped", "part of",
@@ -340,6 +341,87 @@ def check_bullet(original: str, new: str, allowed: list[str], forbidden: list[st
 
 
 # --------------------------------------------------------------------------- #
+# Critique loop: a second reader checks every rewrite for natural, truthful wording
+# --------------------------------------------------------------------------- #
+
+_LINT_SKIP = set("design designed designs engineer engineering engineers manage managed management "
+                 "develop developed development".split())
+
+
+def lint(text: str) -> list[str]:
+    """Mechanical signs of clumsy wording (no model): repeated words and repeated word roots."""
+    low = [w.lower() for w in re.findall(r"[A-Za-z][A-Za-z'-]+", text or "")]
+    issues = [f'repeated word "{a}"' for a, b in zip(low, low[1:]) if a == b]
+    roots: dict[str, set] = {}
+    for w in low:
+        if len(w) >= 6 and w not in STOP and w not in _LINT_SKIP:
+            roots.setdefault(w[:6], set()).add(w)
+    issues += [f'"{" / ".join(sorted(ws))}" repeat the same root' for ws in roots.values() if len(ws) > 1]
+    if len(low) > 45:
+        issues.append("very long sentence")
+    return issues
+
+
+def new_lint(original: str, new: str) -> list[str]:
+    """Only problems the rewrite introduced (the original may legitimately repeat a word)."""
+    before = set(lint(original))
+    return [x for x in lint(new) if x not in before]
+
+
+CRITIC_SYSTEM = """You review rewritten resume bullets. For each one you get the ORIGINAL (the candidate's own verified
+wording), the REWRITE, and the job KEYWORD the rewrite added. Judge the REWRITE:
+  - natural: reads like a careful human wrote it (no clumsy repetition such as "delivering deliverables", no awkward
+    word order, no filler);
+  - truthful: exactly the same facts, scope and role as the ORIGINAL (nothing added, nothing stronger);
+  - the keyword fits the sentence naturally.
+Verdicts:
+  "keep"   - good as it is;
+  "fix"    - give an improved REWRITE in "text": same facts, still containing the keyword, same tense, every acronym,
+             tool and number unchanged;
+  "revert" - the keyword cannot be added naturally or truthfully; the ORIGINAL should be used.
+Output ONLY one JSON object:
+{"reviews":[{"id":"<id>","verdict":"keep|fix|revert","text":"<only for fix>","reason":"<short>"}]}"""
+
+
+def _critic_call(providers: list[str], provider_used: Optional[str], local: Callable) -> tuple[Optional[Callable], str]:
+    """A different reader than the one that polished, when possible."""
+    if CRITIC_MODE == "off":
+        return None, ""
+    if CRITIC_MODE in ("auto", "cloud") and providers:
+        name = next((p for p in providers if p != provider_used), provider_used or providers[0])
+        try:
+            return make_cloud(name), name
+        except Exception:  # noqa: BLE001
+            if CRITIC_MODE == "cloud":
+                return None, ""
+    if CRITIC_MODE in ("auto", "local"):
+        return local, "local model"
+    return None, ""
+
+
+def critique(call: Callable, items: list[dict]) -> dict[str, dict]:
+    """items: [{"id","original","rewrite","keywords","tense","hints"}] -> {id: {"verdict","text","reason"}}"""
+    lines = []
+    for it in items:
+        lines.append(f'- id: {it["id"]}\n  ORIGINAL: {it["original"]}\n  REWRITE: {it["rewrite"]}\n'
+                     f'  KEYWORD: {", ".join(it["keywords"])}\n  TENSE: {it["tense"] or "as original"}'
+                     + (f'\n  POSSIBLE ISSUES: {"; ".join(it["hints"])}' if it["hints"] else ""))
+    raw = call([{"role": "system", "content": CRITIC_SYSTEM}, {"role": "user", "content": "BULLETS:\n" + "\n".join(lines)}])
+    try:
+        data = extract_json(raw)
+    except ValueError:
+        return {}
+    rows = data.get("reviews") or data.get("items") or data.get("bullets") or []
+    out = {}
+    for r in rows if isinstance(rows, list) else []:
+        if isinstance(r, dict) and str(r.get("id", "")).strip():
+            v = str(r.get("verdict", "keep")).strip().lower()
+            out[str(r["id"]).strip()] = {"verdict": v if v in ("keep", "fix", "revert") else "keep",
+                                         "text": str(r.get("text") or "").strip(), "reason": str(r.get("reason") or "").strip()[:160]}
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # Model prompts
 # --------------------------------------------------------------------------- #
 
@@ -540,6 +622,7 @@ def draft_job(ev: EvaluatedJob, profile: Profile, local: Callable, providers: li
     notes: list[str] = []
     current = dict(originals)
     source = {k: "original" for k in planned}
+    critic_note: dict[str, str] = {}
 
     if not allowed:     # nothing verified to add: your original wording is used, no cosmetic rewording
         to_tailor = []
@@ -581,6 +664,51 @@ def draft_job(ev: EvaluatedJob, profile: Profile, local: Callable, providers: li
                 reverted += 1
         if reverted:
             notes.append(f"{reverted} rewrite(s) added no job keyword, so your original wording was kept")
+
+        # critique loop: a second reader checks each remaining rewrite; its fixes pass the same guard
+        def added_kw(text: str, k: str) -> list[str]:
+            return [a for a in allowed if has_term(norm(a), norm(text)) and not has_term(norm(a), norm(originals[k]))]
+        rewritten = [k for k in to_tailor if source[k] != "original"]
+        if rewritten:
+            ccall, cname = _critic_call(providers, provider_used, local)
+            reviews: dict[str, dict] = {}
+            if ccall:
+                try:
+                    reviews = critique(ccall, [{"id": k, "original": originals[k], "rewrite": current[k],
+                                                "keywords": added_kw(current[k], k), "tense": tense[k],
+                                                "hints": new_lint(originals[k], current[k])} for k in rewritten])
+                except Exception as e:  # noqa: BLE001
+                    notes.append(f"critic ({cname}) unavailable: {type(e).__name__}")
+            fixed = kept_by_critic = rev_by_critic = 0
+            for k in rewritten:
+                rv = reviews.get(k)
+                if rv and rv["verdict"] == "revert":
+                    current[k], source[k] = originals[k], "original"
+                    critic_note[k] = f"reverted by the critic: {rv['reason']}"
+                    rev_by_critic += 1
+                elif rv and rv["verdict"] == "fix" and rv["text"]:
+                    cand = clean_text(rv["text"], originals[k])
+                    probs = check_bullet(originals[k], cand, allowed, forbidden, tense[k])
+                    if not probs and added_kw(cand, k):
+                        current[k] = cand
+                        critic_note[k] = f"improved by the critic: {rv['reason']}"
+                        fixed += 1
+                    else:
+                        critic_note[k] = "critic's suggestion rejected by the guard" + (f" ({probs[0]})" if probs else
+                                                                                       " (it dropped the keyword)")
+                elif rv:
+                    critic_note[k] = "approved by the critic"
+                    kept_by_critic += 1
+                # safety net, model or not: clumsy repetition the rewrite introduced -> original wording
+                if source[k] != "original":
+                    bad = [x for x in new_lint(originals[k], current[k]) if "repeat" in x]
+                    if bad:
+                        current[k], source[k] = originals[k], "original"
+                        critic_note[k] = f"reverted: {bad[0]}"
+                        rev_by_critic += 1
+            if reviews or rev_by_critic:
+                notes.append(f"critic ({cname or 'rules only'}): {kept_by_critic} approved, {fixed} improved, "
+                             f"{rev_by_critic} reverted to your wording")
     else:
         provider_used = None
         notes.append("no verified job keyword to add; your bullets are used word for word "
@@ -592,7 +720,7 @@ def draft_job(ev: EvaluatedJob, profile: Profile, local: Callable, providers: li
         return {"id": k, "role_id": ln.role_id or "additional", "project": ln.project, "original": originals[k],
                 "final": current[k], "source": source[k], "relevance": round(score.get(k, 0), 2),
                 "supports": list(dict.fromkeys(why.get(k, [])))[:5],   # job requirements this bullet proves
-                "integrated_keywords": used}
+                "integrated_keywords": used, "critic": critic_note.get(k, "")}
 
     out_sections = []
     for s in sections:
@@ -653,11 +781,13 @@ def save_draft(ev: EvaluatedJob, result: dict, fb_hash: str) -> Path:
         md += [f"## {head}", ""]
         for r in s["bullets"]:
             if r["source"] == "original":
-                md += [f"- {r['final']}"]
+                md += [f"- {r['final']}"] + ([f"  - *Critic:* {r['critic']}"] if r.get("critic") else [])
             else:
                 md += ["", f"- **Tailored ({r['source']}):** {r['final']}", f"  - *Original:* {r['original']}"]
                 if r["integrated_keywords"]:
                     md += [f"  - *Keywords worked in:* {', '.join(r['integrated_keywords'])}"]
+                if r.get("critic"):
+                    md += [f"  - *Critic:* {r['critic']}"]
                 md += [""]
         md += [""]
     if result["notes"]:
