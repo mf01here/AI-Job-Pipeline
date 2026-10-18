@@ -106,21 +106,114 @@ Instead, schedule `python orchestrator.py` with Task Scheduler (Windows) or cron
 with `python webapp/app.py`. Use `venv\Scripts\activate` instead of `source venv/bin/activate` on Windows.
 LibreOffice is recommended for PDFs on every system.
 
-## Make it yours
+## Make it yours: setting up your profile from your resumes
 
-**Guided setup (recommended, about 20 minutes).** On the Dashboard press **Set up my profile**:
+The guided setup turns your existing resumes into a profile in about 20 minutes. The local model only *proposes*;
+you confirm every fact, and nothing is saved until you do.
 
-1. Add every version of your resume (.docx, .pdf or .txt).
-2. The local model **proposes** your roles, bullets, skills, education and certificates. Python checks every bullet
-   against your resume text: bullets found word for word are pre-ticked; anything the model reworded starts
-   **unticked** and is marked, so nothing invented slips in.
-3. You confirm, edit or delete each item, and set honest skill levels (novice / working knowledge never count as a
-   full match).
-4. Name one or two resume variants, write a short summary in your own words, pick a starter pack for your field
-   (mechanical, software or general), and optionally upload a resume whose layout you like.
-5. The profile is validated, saved in `profiles/<yourname>/` and switched on.
+### Before you start
 
-**By hand.** Everything personal lives in one folder, `profiles/<yourname>/`, which is never committed:
+1. **Gather your resumes.** Every version you have: the general one, role-specific ones, older ones. Each version
+   may hold bullets the others lack, and the setup merges them without duplicates.
+   - Best format: **Word (.docx)**. Text-based **PDF** and **.txt** also work.
+   - Scanned PDFs (a photo of a page) cannot be read. If you can't select the text in your PDF viewer, export the
+     resume to Word or copy its text into a .txt file first.
+2. **Start the local model.** Open LM Studio, load your model (Context Length 16384, thinking off; see Quick start),
+   and start the server. Check it on the **Health check** page with **Check including a model test**: it should be
+   green before you continue.
+3. **Open the control centre**: `python webapp/app.py`, then http://localhost:8765. On the Dashboard press
+   **Set up my profile** (also in Settings: *Set up a new profile from resumes*).
+
+### Step 1: Start
+
+Enter your name, e-mail, phone, location (e.g. *Pune, India*) and LinkedIn address: they become your resume header.
+Choose a **short profile name**, one word such as *priya*: your profile is saved in `profiles/priya/`.
+
+### Step 2: Your resumes
+
+Press **Choose files**, select all your resumes at once, and press **Add**. Then press **Read my resumes**.
+The model reads each one in the background, about a minute per resume; the page updates by itself and moves on
+when it's done. You can close the page and come back: progress is saved.
+
+### Step 3: Review your facts (the important step)
+
+Everything the model found is listed, grouped by role. Work through it top to bottom:
+
+- **Roles:** check the job title, employer, location and dates. Dates are written `YYYY-MM` (e.g. `2020-03`) and
+  the current job ends with `Present`. A role marked *dates not found in resume* needs a careful look. Untick
+  **Keep this role** for anything you don't want on any resume.
+- **Bullets:** two kinds of tag:
+  - **in your resume** (green): found word for word in your resume. Pre-ticked.
+  - **reworded** (amber): the model changed the wording, so it starts **unticked**. Compare it with your resume;
+    tick it only if every word is true, or fix the text first.
+
+  Edit any bullet freely, and add missing ones (one per line) in *Add bullets the resumes missed*. Only ticked
+  bullets are saved.
+- **Skills:** for each skill choose an honest level. *Expert* can count as a full match for a job; *working
+  knowledge*, *familiar* and *novice* never do, so you're never presented as stronger than you are. Choose a
+  section (*Tools & Software*, *Methods*, *Domain*); sections become the skill lines on your resume.
+- **Education and certificates:** mark unfinished certificates **in progress**. They appear on the resume as
+  *in progress* but never count as evidence for a job.
+- **Languages and additional:** projects, volunteering or awards you want available.
+
+Press **Save and continue**. You need at least one role with one bullet.
+
+### Step 4: Resume variants
+
+A variant is one version of your resume for one kind of job. Most people need one; add a second if you apply for two
+different kinds of role (e.g. *Mechanical Design Engineer* and *Configuration Analyst*). For each variant:
+
+- **Name** and **typical job titles** (used to pick the right variant for each job).
+- **Headline** under your name, e.g. *Mechanical Design Engineer | Sheet Metal | Siemens NX*.
+- **Profile summary**: 2-3 sentences in your own words. Only true claims: this text is printed as written.
+- **Roles on this resume**: untick roles that don't belong on this variant.
+
+Then choose the **starter rules for your field**: *mechanical* (mechanical, aerospace, manufacturing), *software*
+(software, IT, data) or *general* (anything else).
+
+### Step 5: Search and layout
+
+- **Job titles to search for**, one per line; **locations**, one per line; **country**.
+- **Resume layout (optional):** upload a .docx resume whose look you like. Only its page setup, fonts and bullet
+  style are used, never its text. Without one, a clean default layout is used.
+
+Press **Create my profile**. Your choices are checked (every bullet, role and variant must fit together); if
+something is wrong you'll see what, on the same page.
+
+### Step 6: Done
+
+Press **Use this profile now**. PipelineHQ switches to it immediately (the choice is stored in
+`config.local.toml`, which is never published).
+
+### After setup
+
+1. **Health check** once more: the *Profile* line should now show your name and fact count.
+2. On the Dashboard press **Run now**. The first run is a full search and takes a while (see *Daily use*).
+3. Open **Approved** and read one generated resume next to the job posting. If something looks off, fix the fact
+   at its source (below) rather than in the Word file: every future resume then benefits.
+4. Review **Needs review** for jobs held back for a reason (a tool you rated novice, a degree, a clearance...).
+
+### Changing your profile later
+
+- Small edits: open the files in `profiles/<yourname>/` in any text editor (table below), save, and restart the
+  control centre. A change to `fact_bank.json` makes the next run re-analyse jobs against the new facts.
+- Start over or add a second person: run the guided setup again with a new short profile name.
+- Your source resumes are kept in `profiles/<yourname>/source_resumes/`, on your computer only.
+
+### If something goes wrong
+
+| What you see | What to do |
+|---|---|
+| *Could not read the resumes: the local model is not available* | Open LM Studio, load the model, start the server, then press **Read my resumes** again |
+| Reading takes many minutes per resume | The model is probably "thinking": run the Health check's model test and follow its fix |
+| Most bullets are marked **reworded** | Your model is paraphrasing; try a different model (Qwen 3.5 9B copies faithfully), or tick the ones that are accurate |
+| Nothing found in a PDF | It is probably a scanned image: export the resume to Word and add the .docx instead |
+| *Not saved yet: ...* after Create my profile | The message names the problem (e.g. a variant with no roles); go back one step with the step buttons and fix it |
+| Setup interrupted | Open **Set up** again and press **Continue**: your progress is kept |
+
+### Setting up by hand (advanced)
+
+Everything personal lives in one folder, `profiles/<yourname>/`, which is never committed:
 
 | File | What it holds |
 |---|---|
