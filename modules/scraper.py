@@ -59,7 +59,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from typing import Callable, Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from pydantic import BaseModel, ValidationError
@@ -343,6 +343,9 @@ Target = dict  # {"ats": str, ...params}
 
 def ats_from_url(url: str) -> Optional[Target]:
     """Detect ATS type + params from any careers URL."""
+    if url.lower().startswith("avature:"):
+        base = url.split(":", 1)[1].strip().rstrip("/")
+        return {"ats": "avature", "base": base} if base.startswith("http") else None
     if url.lower().startswith("successfactors:"):
         base = url.split(":", 1)[1].strip().rstrip("/")
         return {"ats": "successfactors", "base": base} if base.startswith("http") else None
@@ -704,6 +707,119 @@ def fetch_successfactors(t: Target, company: str, role: str, location: str, limi
         return [r for r in ex.map(detail, candidates) if r]
 
 
+# --------------------------------------------------------------------------- #
+# Avature career sites (e.g. Siemens): the search page is server-rendered, so it is read directly.
+# Search field: "search"; paging: folderOffset / folderRecordsPerPage.
+# --------------------------------------------------------------------------- #
+
+def parse_avature_search(page_html: str, base: str) -> list[dict]:
+    soup = BeautifulSoup(page_html, "html.parser")
+    out, seen = [], set()
+    cards = soup.select("article.article--result") or [a.find_parent(["article", "li", "div"])
+                                                       for a in soup.select("a[href*='/JobDetail/']")]
+    for card in cards:
+        if card is None:
+            continue
+        a = card.select_one("h3 a[href*='/JobDetail/'], a.link[href*='/JobDetail/'], a[href*='/JobDetail/']")
+        if not a or not a.get_text(strip=True):
+            continue
+        url = urljoin(base + "/", a["href"].split("?")[0])
+        if url in seen:
+            continue
+        seen.add(url)
+        parts = [card.select_one(f".list-item-{k}") for k in ("jobCity", "jobState", "jobCountry")]
+        loc = ", ".join(p.get_text(" ", strip=True) for p in parts if p and p.get_text(strip=True))
+        if not loc:
+            sub = card.select_one("[class*=subtitle]")
+            loc = re.split(r"\s*[•|]\s*", sub.get_text(" ", strip=True))[0] if sub else ""
+            loc = re.sub(r"\s*,\s*", ", ", loc)
+        jid = card.select_one(".list-item-jobId")
+        m = re.search(r"(\d{4,})", jid.get_text() if jid else url)
+        out.append({"title": re.sub(r"\s+", " ", a.get_text(" ", strip=True)), "url": url, "location": loc,
+                    "id": m.group(1) if m else url})
+    return out
+
+
+def parse_avature_job(page_html: str) -> str:
+    soup = BeautifulSoup(page_html, "html.parser")
+    for tag in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(tag.string or "")
+        except (ValueError, TypeError):
+            continue
+        for item in (data if isinstance(data, list) else [data]):
+            if isinstance(item, dict) and item.get("description"):
+                text = html_to_text(item["description"])
+                if len(text) >= 200:
+                    return text
+    blocks = [b for b in soup.select("[class*='article__content'], [class*='job-description'], [class*='jobDescription']")]
+    texts = sorted((html_to_text(str(b)) for b in blocks), key=len, reverse=True)
+    if texts and len(texts[0]) >= 200:
+        return texts[0]
+    main = soup.select_one("main") or soup.body
+    return html_to_text(str(main)) if main else ""
+
+
+def fetch_avature(t: Target, company: str, role: str, location: str, limit: int) -> list[dict]:
+    base = t["base"]
+    headers = {"Accept": "text/html", "Accept-Language": "en-US,en;q=0.9"}
+    wanted = split_locations(location)
+    candidates: list[dict] = []
+    seen: set[str] = set()
+
+    def search(q: str) -> int:
+        """Pages through one search; returns how many result cards it saw."""
+        offset, total = 0, 0
+        while offset < 300 and len(candidates) < limit * 3:
+            r = SESSION.get(f"{base}/SearchJobs", params={"search": q, "keywords": q, "folderRecordsPerPage": 50,
+                                                          "folderOffset": offset}, headers=headers, timeout=HTTP_TIMEOUT)
+            r.raise_for_status()
+            rows = parse_avature_search(r.text, base)
+            new = [x for x in rows if x["url"] not in seen]
+            if not new:
+                break
+            total += len(rows)
+            for job in new:
+                seen.add(job["url"])
+                word = excluded_title_word(job["title"])
+                if not title_matches(job["title"], role):
+                    note_drop("portal_filter", "avature", company, job["title"], job["location"], job["url"],
+                              "title_mismatch", f"title lacks the words of '{role}'")
+                elif word:
+                    note_drop("portal_filter", "avature", company, job["title"], job["location"], job["url"],
+                              "excluded_title_word", f"title contains '{word}'")
+                elif not location_matches(job["location"], location):
+                    note_drop("portal_filter", "avature", company, job["title"], job["location"], job["url"],
+                              "location_mismatch", f"wanted: {location or COUNTRY_FILTER or 'any'}")
+                else:
+                    candidates.append(job)
+            offset += len(rows)
+        return total
+
+    # Searching "role + city" first keeps a worldwide employer's results local; then the role alone, filtered by us
+    for loc in wanted:
+        for spelling in LOCATION_ALIASES.get(loc.lower(), [loc]):
+            search(f"{role} {spelling}")
+    search(role)
+    for extra in candidates[limit:]:
+        note_drop("portal_filter", "avature", company, extra["title"], extra["location"], extra["url"],
+                  "beyond_max_per_source", f"--max {limit}")
+    candidates = candidates[:limit]
+
+    def detail(c: dict) -> Optional[dict]:
+        try:
+            r = SESSION.get(c["url"], headers=headers, timeout=HTTP_TIMEOUT)
+            r.raise_for_status()
+        except Exception as e:  # noqa: BLE001
+            note_drop("portal_detail", "avature", company, c["title"], c["location"], c["url"],
+                      "detail_fetch_failed", str(e)[:200])
+            return None
+        return raw_record("avature", c["id"], company, c["title"], c["location"], c["url"], parse_avature_job(r.text))
+
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        return [r for r in ex.map(detail, candidates) if r]
+
+
 ATS_FETCHERS: dict[str, Callable[..., list[dict]]] = {
     "workday": fetch_workday,
     "greenhouse": fetch_greenhouse,
@@ -711,6 +827,7 @@ ATS_FETCHERS: dict[str, Callable[..., list[dict]]] = {
     "ashby": fetch_ashby,
     "smartrecruiters": fetch_smartrecruiters,
     "successfactors": fetch_successfactors,
+    "avature": fetch_avature,
 }
 
 

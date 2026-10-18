@@ -32,7 +32,7 @@ flowchart LR
     D --> E[Word + PDF resume<br/>and application tracker]
 ```
 
-1. **Find jobs** from company career portals (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, SAP SuccessFactors),
+1. **Find jobs** from company career portals (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, SAP SuccessFactors, Avature),
    LinkedIn's public job pages (slow and polite, never your account), Indeed and Naukri, plus a watch list of companies.
    Duplicates across sources are merged; internships and off-domain titles are filtered out.
 2. **Score** each job: the local model lists the job's requirements and quotes your Fact Bank as evidence; Python
@@ -255,7 +255,7 @@ data and keys stay on your computer. `scripts/privacy_check.py` checks every fil
 
 - Scraping job boards may conflict with their terms of service; you run it at your own discretion. LinkedIn is read
   only through public job pages, at a deliberately slow pace, with a small request budget per run.
-- Some career platforms (e.g. Avature, Oracle, Taleo) are not supported yet; such companies are searched on the job
+- Some career platforms (e.g. Oracle, Taleo, iCIMS) are not supported yet; such companies are searched on the job
   boards instead. Naukri often hides descriptions behind a captcha; those jobs appear as leads to paste.
 - PipelineHQ never submits applications. You review and apply yourself.
 
@@ -279,7 +279,6 @@ tests/                   offline tests
 
 ## Roadmap
 
-- Connector for Avature career sites
 - Recruiter / hiring-manager outreach drafts grounded in the Fact Bank
 - Interview preparation (STAR answers) per approved job, from the evidence map
 

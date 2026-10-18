@@ -25,9 +25,9 @@ from urllib.parse import urljoin, urlparse
 
 from modules.settings import profile_dir
 
-SUPPORTED = {"workday", "greenhouse", "lever", "ashby", "smartrecruiters", "successfactors"}
+SUPPORTED = {"workday", "greenhouse", "lever", "ashby", "smartrecruiters", "successfactors", "avature"}
 PLATFORM_NAMES = {"workday": "Workday", "greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby",
-                  "smartrecruiters": "SmartRecruiters", "successfactors": "SAP SuccessFactors"}
+                  "smartrecruiters": "SmartRecruiters", "successfactors": "SAP SuccessFactors", "avature": "Avature"}
 
 # Links inside a careers page that point to a platform we can read directly
 ATS_LINK = re.compile(
@@ -38,7 +38,7 @@ ATS_LINK = re.compile(
     r"|https?://(?:jobs|careers)\.smartrecruiters\.com/[\w.-]+", re.I)
 
 # Fingerprints of platforms we cannot read yet (recorded so we know which adapter is worth building)
-UNSUPPORTED = [("Avature", r"avature\.net|avature"), ("Oracle Recruiting", r"oraclecloud\.com/hcmUI|fa\.\w+\.oraclecloud"),
+UNSUPPORTED = [("Oracle Recruiting", r"oraclecloud\.com/hcmUI|fa\.\w+\.oraclecloud"),
                ("Taleo", r"taleo\.net"), ("iCIMS", r"icims\.com"), ("Eightfold", r"eightfold\.ai"),
                ("Phenom", r"phenompeople|cdn\.phenom"), ("Darwinbox", r"darwinbox"), ("Zoho Recruit", r"zohorecruit|/recruit/viewCareer"),
                ("Keka", r"keka\.com"), ("Workable", r"apply\.workable\.com"), ("Jobvite", r"jobvite\.com"),
@@ -56,9 +56,14 @@ def store_path(profile: Optional[str] = None) -> Path:
 def load(profile: Optional[str] = None) -> list[dict]:
     p = store_path(profile)
     try:
-        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+        items = json.loads(p.read_text(encoding="utf-8")) if p.exists() else []
     except (ValueError, OSError):
         return []
+    for c in items:   # links saved before Avature was supported become direct portals now
+        for link in c.get("links", []):
+            if str(link.get("platform", "")).lower() == "avature" and not link.get("supported"):
+                link.update(supported=True, name="Avature", portal=avature_base(link["url"]))
+    return items
 
 
 def save(items: list[dict], profile: Optional[str] = None) -> None:
@@ -118,6 +123,9 @@ def detect(url: str, fetch=None) -> dict:
         u = urlparse(final_url)
         return _result("successfactors", f"successfactors:{u.scheme}://{u.netloc}",
                        "This careers site runs on SAP SuccessFactors; its public job feed will be read.")
+    if re.search(r"avature\.net|avature", html, re.I) or re.search(r"/(SearchJobs|JobDetail)\b", final_url):
+        return _result("avature", avature_base(final_url),
+                       "This careers site runs on Avature; its job search pages will be read directly.")
     for m in ATS_LINK.finditer(html):
         t = ats_from_url(m.group(0))
         if t:
@@ -130,6 +138,13 @@ def detect(url: str, fetch=None) -> dict:
     return {"platform": "unknown", "name": "Unknown", "supported": False, "portal": None,
             "note": "No known job platform was found on that page. Try pasting the link of one job posting "
                     "from it; meanwhile the company is searched on the job boards."}
+
+
+def avature_base(url: str) -> str:
+    """https://jobs.siemens.com/en_US/externaljobs/SearchJobs?... -> avature:https://jobs.siemens.com/en_US/externaljobs"""
+    u = urlparse(url)
+    path = re.split(r"/(?:SearchJobs|JobDetail|ApplicationMethods|Login)\b", u.path)[0].rstrip("/")
+    return f"avature:{u.scheme}://{u.netloc}{path}"
 
 
 def _result(ats: str, portal: str, note: str) -> dict:

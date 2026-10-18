@@ -29,8 +29,12 @@ class Detection(unittest.TestCase):
         self.assertEqual((r["platform"], r["portal"]), ("successfactors", "successfactors:https://careers.example.com"))
 
     def test_unsupported_platform_is_named(self):
-        r = comp.detect("https://jobs.example.com/", fetch=page('<script src="https://x.avature.net/a.js"></script>'))
-        self.assertEqual((r["name"], r["supported"]), ("Avature", False))
+        r = comp.detect("https://jobs.example.com/", fetch=page('<script src="https://x.taleo.net/a.js"></script>'))
+        self.assertEqual((r["name"], r["supported"]), ("Taleo", False))
+
+    def test_avature_is_now_a_direct_portal(self):
+        r = comp.detect("https://jobs.example.com/en_US/careers", fetch=page('<script src="https://x.avature.net/a.js">', "https://jobs.example.com/en_US/careers"))
+        self.assertEqual((r["platform"], r["portal"]), ("avature", "avature:https://jobs.example.com/en_US/careers"))
 
     def test_unknown_page(self):
         r = comp.detect("https://example.com/", fetch=page("<html>hello</html>"))

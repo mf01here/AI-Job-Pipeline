@@ -262,3 +262,47 @@ class TopUpMode(unittest.TestCase):
         jobs, kept, dupes, _ = sc.dedupe([old, same_again, new])
         self.assertEqual((kept, dupes), (2, 1))
         self.assertTrue(jobs[0].job_id.startswith("workday"))
+
+
+AVATURE_PAGE = (Path(__file__).parent / "fixture_avature_search.html").read_text(encoding="utf-8")
+AVATURE_JOB = """<html><main><div class="article__content"><p>Design gas turbine components in Siemens NX and release
+drawings. Work with suppliers and manufacturing. Own design reviews and change management for the assemblies you
+design, from concept to production, with stress and aerodynamics teams.</p></div></main></html>"""
+
+
+class AvatureSites(unittest.TestCase):
+    """Built from a real Siemens (Avature) search page."""
+
+    def test_real_result_cards(self):
+        rows = sc.parse_avature_search(AVATURE_PAGE, "https://jobs.siemens.com/en_US/externaljobs")
+        self.assertEqual(rows[0]["title"], "Gas Services Generator Technical Solutions Mechanical Engineer")
+        self.assertEqual(rows[0]["location"], "Gurugram, Haryana, India")
+        self.assertEqual(rows[0]["id"], "526050")
+
+    def test_fetch_filters_location_and_reads_descriptions(self):
+        class R:
+            status_code = 200
+
+            def __init__(s, t): s.text = t
+
+            def raise_for_status(s): pass
+        calls = []
+
+        def fake_get(url, params=None, **k):
+            calls.append(params or {})
+            if "SearchJobs" in url:
+                return R(AVATURE_PAGE if params.get("folderOffset", 0) == 0 else "<html></html>")
+            return R(AVATURE_JOB)
+        old, old_c = sc.SESSION.get, sc.COUNTRY_FILTER
+        sc.SESSION.get, sc.COUNTRY_FILTER = fake_get, "India"
+        try:
+            recs = sc.fetch_avature({"base": "https://jobs.siemens.com/en_US/externaljobs"}, "siemens", "Engineer",
+                                    "Gurugram", 10)
+            none = sc.fetch_avature({"base": "https://jobs.siemens.com/en_US/externaljobs"}, "siemens", "Engineer",
+                                    "Bengaluru", 10)
+        finally:
+            sc.SESSION.get, sc.COUNTRY_FILTER = old, old_c
+        self.assertEqual(len(recs), 2)
+        self.assertIn("Siemens NX", recs[0]["description"])
+        self.assertEqual(none, [])                                   # Gurugram jobs are not Bengaluru jobs
+        self.assertTrue(calls[0]["search"].lower().startswith("engineer gur"))   # city searched first
