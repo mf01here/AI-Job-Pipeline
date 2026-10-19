@@ -28,10 +28,17 @@ DEFAULTS: dict = {
     "analysis": {"max_requirements": 15, "max_desc_chars": 9000, "max_attempts": 3, "context_warn_tokens": 14000},
     "drafting": {"max_tailored_bullets": 10, "local_attempts": 3, "cloud_attempts": 2,
                  "min_retention": 0.65, "max_growth": 1.4},
-    "local_llm": {"base_url": "http://localhost:1234/v1", "api_key": "lm-studio", "model": "",
+    "local_llm": {"provider": "lmstudio", "base_url": "", "api_key": "local", "model": "",
                   "temperature": 0, "max_tokens": 6144, "prompt_suffix": "", "timeout_s": 900, "model_profiles": []},
     "cloud": {"temperature": 0.3, "providers": []},
 }
+
+
+# Usual addresses of local model servers (all speak the OpenAI-compatible API)
+PROVIDER_URLS = {"lmstudio": "http://localhost:1234/v1", "ollama": "http://localhost:11434/v1",
+                 "llamacpp": "http://localhost:8080/v1", "mlx": "http://localhost:8080/v1",
+                 "jan": "http://localhost:1337/v1", "localai": "http://localhost:8080/v1",
+                 "vllm": "http://localhost:8000/v1", "other": "http://localhost:8080/v1"}
 
 
 def _merge(base: dict, over: dict) -> dict:
@@ -54,9 +61,13 @@ def load_config(path: Path | None = None) -> dict:
                     _merge(cfg, tomllib.load(f))
             except tomllib.TOMLDecodeError as e:
                 raise SystemExit(f"{p.name} has a typing mistake: {e}\nFix that line and run again.")
-    env_url = os.getenv("LM_STUDIO_BASE_URL", "").strip()
+    lc = cfg["local_llm"]
+    lc["provider"] = str(lc.get("provider") or "lmstudio").strip().lower()
+    if not str(lc.get("base_url") or "").strip():      # empty = the provider's usual address
+        lc["base_url"] = PROVIDER_URLS.get(lc["provider"], PROVIDER_URLS["lmstudio"])
+    env_url = (os.getenv("LOCAL_LLM_BASE_URL") or os.getenv("LM_STUDIO_BASE_URL") or "").strip()
     if env_url:
-        cfg["local_llm"]["base_url"] = env_url
+        lc["base_url"] = env_url
     return cfg
 
 

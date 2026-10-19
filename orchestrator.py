@@ -3,7 +3,8 @@
 Orchestrator: the whole pipeline in one command
 ===============================================
 
-  1. Local model ready   - starts LM Studio's server and loads your model (needs LM Studio's "lms" tool)
+  1. Local model ready   - LM Studio: starts its server and loads your model ("lms" tool); other providers
+                           (Ollama, llama.cpp, ...): checks the server answers
   2. Scrape              - top-up by default (adds new jobs); a full refresh every N days drops expired ones
   3. Analyse             - only jobs not analysed before (Phase 2/3)
   4. Draft               - only newly approved jobs (Phase 4)
@@ -40,6 +41,26 @@ from modules.settings import CFG, DATA_DIR, profile_dir  # noqa: E402
 log = logging.getLogger("orchestrator")
 STEPS = ["model", "scrape", "analyze", "draft", "build"]
 LOCK = DATA_DIR / "run.lock"
+STATUS = DATA_DIR / "run_status.json"     # live progress for the control centre, whoever started the run
+STEP_NAMES = {"model": "Model", "scrape": "Scrape", "analyze": "Analyse", "draft": "Draft", "build": "Resumes"}
+_STATUS: dict = {}
+
+
+def set_status(**kw) -> None:
+    _STATUS.update(kw)
+    try:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = STATUS.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(_STATUS, indent=2), encoding="utf-8")
+        os.replace(tmp, STATUS)
+    except OSError:
+        pass
+
+
+def step_state(key: str, state: str) -> None:
+    steps = dict(_STATUS.get("steps", {}))
+    steps[key] = state
+    set_status(steps=steps, current=key if state == "running" else _STATUS.get("current"))
 LAST_RUN = DATA_DIR / "last_run.json"
 LOG_DIR = DATA_DIR / "logs"
 PY = sys.executable
@@ -78,27 +99,36 @@ def _lms() -> str | None:
 
 
 def ensure_model() -> bool:
-    """Start LM Studio's server and load the model if needed. Returns True when the server answers."""
-    model = CFG["local_llm"].get("model") or CFG.get("orchestrator", {}).get("model", "qwen/qwen3.5-9b")
-    ctx = str(CFG.get("orchestrator", {}).get("context_length", 16384))
-    lms = _lms()
-    if lms:
-        if not _server_up():
-            log.info("Starting LM Studio's local server...")
-            subprocess.run([lms, "server", "start"], capture_output=True, timeout=120)
-        loaded = subprocess.run([lms, "ps"], capture_output=True, text=True, timeout=60).stdout
-        if model.split("/")[-1].lower() not in loaded.lower():
-            log.info("Loading %s (context %s)...", model, ctx)
-            r = subprocess.run([lms, "load", model, "--context-length", ctx, "-y"],
-                               capture_output=True, text=True, timeout=600)
-            if r.returncode != 0:
-                log.warning("Could not load the model automatically: %s", (r.stderr or r.stdout).strip()[:300])
+    """Make sure the local model server answers. With LM Studio it is started and the model loaded if needed."""
+    lc = CFG["local_llm"]
+    provider = lc.get("provider", "lmstudio")
+    if provider == "lmstudio":
+        model = lc.get("model") or CFG.get("orchestrator", {}).get("model", "qwen/qwen3.5-9b")
+        ctx = str(CFG.get("orchestrator", {}).get("context_length", 16384))
+        lms = _lms()
+        if lms:
+            if not _server_up():
+                log.info("Starting LM Studio's local server...")
+                subprocess.run([lms, "server", "start"], capture_output=True, timeout=120)
+            loaded = subprocess.run([lms, "ps"], capture_output=True, text=True, timeout=60).stdout
+            if model.split("/")[-1].lower() not in loaded.lower():
+                log.info("Loading %s (context %s)...", model, ctx)
+                r = subprocess.run([lms, "load", model, "--context-length", ctx, "-y"],
+                                   capture_output=True, text=True, timeout=600)
+                if r.returncode != 0:
+                    log.warning("Could not load the model automatically: %s", (r.stderr or r.stdout).strip()[:300])
     for _ in range(30):
         if _server_up():
+            if provider != "lmstudio" and not lc.get("model"):
+                log.error("Set the model's name in config.toml ([local_llm] model = ...) for provider '%s'.", provider)
+                return False
             return True
         time.sleep(2)
-    log.error("LM Studio's server is not answering. Open LM Studio, load your model, start the server "
-              "(or install LM Studio's 'lms' tool so this can be done automatically).")
+    hint = {"lmstudio": "Open LM Studio, load your model and start the server (or install LM Studio's 'lms' tool "
+                        "so this happens automatically).",
+            "ollama": "Start Ollama (open the Ollama app, or run 'ollama serve' in Terminal)."}
+    log.error("The local model server is not answering at %s. %s", lc["base_url"],
+              hint.get(provider, "Start your local model server."))
     return False
 
 
@@ -107,6 +137,8 @@ def ensure_model() -> bool:
 # --------------------------------------------------------------------------- #
 
 def run_step(name: str, cmd: list[str], logfile: Path) -> int:
+    key = next((k for k, v in STEP_NAMES.items() if v == name), name.lower())
+    step_state(key, "running")
     log.info("\n=== %s ===", name)
     t0 = time.time()
     with open(logfile, "a", encoding="utf-8") as lf:
@@ -119,6 +151,7 @@ def run_step(name: str, cmd: list[str], logfile: Path) -> int:
             lf.write(line)
         proc.wait()
     log.info("--- %s finished in %.0f min (exit %d)", name, (time.time() - t0) / 60, proc.returncode)
+    step_state(key, "done" if proc.returncode == 0 else "failed")
     return proc.returncode
 
 
@@ -213,6 +246,7 @@ def main() -> int:
     ap.add_argument("--profile", help="profile folder under profiles/ (default: config.toml)")
     ap.add_argument("--fresh", action="store_true", help="full refresh of the job list instead of a top-up")
     ap.add_argument("--steps", default=",".join(STEPS), help=f"comma-separated subset of: {','.join(STEPS)}")
+    ap.add_argument("--trigger", default="manual", help="who started the run: manual, web, scheduled, catch-up")
     ap.add_argument("--job-id", action="append", metavar="ID",
                     help="draft and build just this job (e.g. one you approved on the review page)")
     args = ap.parse_args()
@@ -227,6 +261,15 @@ def main() -> int:
     LOCK.write_text(str(os.getpid()))
     started = datetime.now()
     logfile = LOG_DIR / f"run-{started:%Y%m%d-%H%M}.log"
+    logfile.touch()
+    if args.trigger in ("scheduled", "catch-up"):
+        sp = DATA_DIR / "schedule_state.json"
+        sp.write_text(json.dumps({"last_scheduled_date": started.strftime("%Y-%m-%d"), "trigger": args.trigger}),
+                      encoding="utf-8")
+    set_status(pid=os.getpid(), trigger=args.trigger, started=started.isoformat(timespec="seconds"),
+               log=str(logfile), running=True, finished=None, current=None,
+               steps={k: "pending" for k in STEPS if k in steps or (k == "model" and {"analyze", "draft"} & set(steps))},
+               job_ids=args.job_id or [])
     search = load_search(args.profile)
     prof = ["--profile", args.profile] if args.profile else []
     approved_before = {e["job"]["job_id"] for e in _read(DATA_DIR / "evaluated_jobs.json", [])
@@ -237,8 +280,10 @@ def main() -> int:
                  ", ".join(search["roles"]), ", ".join(search["locations"]) or "any")
         model_ok = True
         if "model" in steps or {"analyze", "draft"} & set(steps):
+            step_state("model", "running")
             model_ok = ensure_model()
             results["model"] = 0 if model_ok else 1
+            step_state("model", "done" if model_ok else "failed")
         if "scrape" in steps:
             fresh = args.fresh or needs_full_refresh(search)
             log.info("Job list: %s", "full refresh" if fresh else "top-up (adding new jobs)")
@@ -257,6 +302,7 @@ def main() -> int:
         log.warning("\nStopped by you.")
     finally:
         LOCK.unlink(missing_ok=True)
+        set_status(running=False, finished=datetime.now().isoformat(timespec="seconds"), current=None)
 
     summary = summarize(started, results, approved_before)
     log.info("\n==================== SUMMARY ====================")

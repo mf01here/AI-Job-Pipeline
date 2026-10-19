@@ -53,22 +53,25 @@ min_retention = 0.65        # share of the original's key words that must surviv
 max_growth = 1.4            # a rewrite may be at most 1.4x the original length (+30 characters)
 
 # ---------------------------------------------------------------------------
-# Orchestrator: which model to load automatically for a run (LM Studio model key, as in "lms ls")
-[orchestrator]
-model = "qwen/qwen3.5-9b"
-context_length = 16384
-
-# ---------------------------------------------------------------------------
-# Local model server. LM Studio: http://localhost:1234/v1   Ollama: http://localhost:11434/v1
-# LM_STUDIO_BASE_URL in .env overrides base_url.
+# Local model. Any server with an OpenAI-compatible API works:
+#   provider = "lmstudio"  LM Studio      (default; can start and load the model by itself before a run)
+#   provider = "ollama"    Ollama         (set model, e.g. "qwen3.5:9b"; Ollama loads it on first use)
+#   provider = "llamacpp" | "mlx" | "jan" | "localai" | "vllm" | "other"   (set model and, if needed, base_url)
+# base_url empty = the provider's usual address. LOCAL_LLM_BASE_URL in .env overrides it.
 [local_llm]
-base_url = "http://localhost:1234/v1"
-api_key = "lm-studio"
-model = ""                  # empty = detect the model currently loaded in LM Studio
+provider = "lmstudio"
+base_url = ""
+api_key = "local"           # local servers ignore it; some need any non-empty value
+model = ""                  # LM Studio: empty = the model currently loaded. Other providers: the model's name
 temperature = 0
 max_tokens = 6144          # a full analysis needs about 1,500-3,000 reply tokens; long postings need more
 prompt_suffix = ""
 timeout_s = 900            # give up on one model call after this many seconds
+
+# Orchestrator (LM Studio only): which model to load automatically before a run (key as shown by "lms ls")
+[orchestrator]
+model = "qwen/qwen3.5-9b"
+context_length = 16384
 
 # Per-model tweaks. "match" is a pattern tested against the loaded model's name; the first match wins.
 [[local_llm.model_profiles]]

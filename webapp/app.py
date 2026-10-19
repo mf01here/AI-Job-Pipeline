@@ -24,7 +24,7 @@ import signal
 import socket
 import subprocess
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -158,40 +158,139 @@ def set_ledger(job: dict, **fields) -> None:
 # Background tasks (one at a time; the orchestrator's lock also prevents overlaps)
 # --------------------------------------------------------------------------- #
 
+RUN_STATUS = DATA_DIR / "run_status.json"
+TRIGGER_LABELS = {"scheduled": "Morning run (scheduled)", "catch-up": "Morning run (catching up after sleep)",
+                  "manual": "Run started from Terminal", "web": "Run"}
+STEP_TITLES = {"model": "Model", "scrape": "Scrape", "analyze": "Analyse", "draft": "Draft", "build": "Resumes"}
+
+
+def _alive(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def task_state() -> dict:
-    t = jread(TASK, {})
-    if t.get("pid"):
-        try:
-            os.kill(int(t["pid"]), 0)
-            t["running"] = True
-        except (OSError, ValueError):
-            t["running"] = False
+    """The current or latest run, whoever started it (Run now, the morning schedule, Terminal)."""
+    rs = jread(RUN_STATUS, {})
+    web = jread(TASK, {})
+    t: dict = {}
+    if rs.get("pid"):
+        running = bool(rs.get("running")) and _alive(rs["pid"])
+        label = web.get("label") if web.get("pid") == rs.get("pid") or rs.get("trigger") == "web" and web.get("label") \
+            else TRIGGER_LABELS.get(rs.get("trigger", "manual"), "Run")
+        t = {"running": running, "label": label, "log": rs.get("log"), "started": rs.get("started"),
+             "finished": rs.get("finished"), "trigger": rs.get("trigger"),
+             "steps": [{"key": k, "name": STEP_TITLES.get(k, k), "state": v} for k, v in (rs.get("steps") or {}).items()]}
+        if not running and rs.get("running"):          # the process died without finishing (e.g. Mac restarted)
+            t["interrupted"] = True
+    elif web.get("pid"):                                 # older single-job tasks
+        t = {**web, "running": _alive(web["pid"]), "steps": []}
     lines = []
     log = Path(t["log"]) if t.get("log") else None
     if log and log.exists():
         lines = log.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
     t["tail"] = "\n".join(lines)
-    # when it ran and for how long (finished = last time the log was written)
+    prog = next((m for m in (re.search(r"\[(\d+)/(\d+)\]", ln) for ln in reversed(lines)) if m), None)
+    current = next((s_["name"] for s_ in t.get("steps", []) if s_["state"] == "running"), "")
+    t["progress"] = (f"{current}: job {prog.group(1)} of {prog.group(2)}" if prog and current in ("Analyse", "Draft")
+                     else (f"{current}…" if current else ""))
     try:
         started = datetime.fromisoformat(t["started"])
-        end = datetime.now() if t.get("running") else datetime.fromtimestamp(log.stat().st_mtime)
+        if t.get("running"):
+            end = datetime.now()
+        elif t.get("finished"):
+            end = datetime.fromisoformat(t["finished"])
+        else:
+            end = datetime.fromtimestamp(log.stat().st_mtime)
         t["minutes"] = max(0, round((end - started).total_seconds() / 60))
         t["started_hm"] = started.strftime("%d %b, %H:%M")
         if not t.get("running"):
             t["finished_ago_s"] = int((datetime.now() - end).total_seconds())
-    except (KeyError, ValueError, AttributeError, OSError):
+    except (KeyError, ValueError, AttributeError, OSError, TypeError):
         pass
     return t
 
 
+def next_run() -> str:
+    """'today 06:30' / 'tomorrow 06:30' / 'Mon 06:30' / '' (off)."""
+    s = read_search()["schedule"]
+    if not s.get("enabled"):
+        return ""
+    days = scheduler.clean_days(s.get("days"))
+    last = jread(DATA_DIR / "schedule_state.json", {}).get("last_scheduled_date")
+    hh, mm = (s.get("time") or "06:30").split(":")
+    now = datetime.now()
+    for ahead in range(0, 8):
+        day = now.date() + timedelta(days=ahead)
+        if scheduler.DAYS[day.weekday()] not in days:
+            continue
+        due = datetime.combine(day, datetime.min.time()).replace(hour=int(hh), minute=int(mm))
+        if ahead == 0:
+            if last == day.isoformat():
+                continue
+            if now >= due:
+                return f"today, as soon as possible (it was due at {s['time']})"
+            return f"today {s['time']}"
+        return f"{'tomorrow' if ahead == 1 else scheduler.DAY_NAMES[scheduler.DAYS[day.weekday()]]} {s['time']}"
+    return ""
+
+
+def catch_up_check() -> bool:
+    """Start today's morning run if its time has passed and it has not run (e.g. the Mac was asleep)."""
+    s = read_search()["schedule"]
+    if not s.get("enabled") or (DATA_DIR / "run.lock").exists() or task_state().get("running"):
+        return False
+    try:
+        hh, mm = (s.get("time") or "06:30").split(":")
+        due = datetime.now().replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+    except ValueError:
+        return False
+    last = jread(DATA_DIR / "schedule_state.json", {}).get("last_scheduled_date")
+    if scheduler.DAYS[date.today().weekday()] not in scheduler.clean_days(s.get("days")):
+        return False                                   # not a run day
+    if datetime.now() < due or last == date.today().isoformat():
+        return False
+    cmd = [sys.executable, str(ROOT / "orchestrator.py"), "--trigger", "catch-up"]
+    if sys.platform == "darwin" and Path("/usr/bin/caffeinate").exists():
+        cmd = ["/usr/bin/caffeinate", "-i", *cmd]
+    logs = DATA_DIR / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    with open(logs / "scheduled-runs.log", "a", encoding="utf-8") as lf:
+        subprocess.Popen(cmd, cwd=ROOT, stdout=lf, stderr=subprocess.STDOUT, start_new_session=True,
+                         env={**os.environ, "PYTHONUNBUFFERED": "1"})
+    return True
+
+
+def _catch_up_loop() -> None:
+    import time as _t
+    _t.sleep(30)                       # let the Mac settle after waking / logging in
+    while True:
+        try:
+            catch_up_check()
+        except Exception:  # noqa: BLE001 - never let the checker stop the control centre
+            pass
+        _t.sleep(60)
+
+
+def time_since(path: Path) -> float:
+    try:
+        return datetime.now().timestamp() - path.stat().st_mtime
+    except OSError:
+        return 1e9
+
+
 def start_task(label: str, args: list[str]) -> bool:
-    if task_state().get("running") or (DATA_DIR / "run.lock").exists():
+    if task_state().get("running") or ((DATA_DIR / "run.lock").exists() and
+                                       time_since(DATA_DIR / "run.lock") < 6 * 3600):
         flash("Something is already running. Wait for it to finish (see the Dashboard).", "warn")
         return False
     logs = DATA_DIR / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     log = logs / f"web-{datetime.now():%Y%m%d-%H%M%S}.log"
-    cmd = [sys.executable, str(ROOT / "orchestrator.py"), *args]
+    cmd = [sys.executable, str(ROOT / "orchestrator.py"), "--trigger", "web", *args]
     with open(log, "w", encoding="utf-8") as lf:
         lf.write(f"{label}\n$ {shlex.join(cmd)}\n\n")
         lf.flush()
@@ -216,12 +315,13 @@ def read_search() -> dict:
     p = search_path()
     base = {"roles": [], "locations": [], "country": "India", "sites": ["indeed", "naukri", "linkedin"],
             "scan_company_portals": True, "title_match": "broad", "max_age_days": 30, "full_refresh_every_days": 7,
-            "schedule": {"enabled": False, "time": "06:30"}, "notify": {"ntfy_topic": ""}}
+            "schedule": {"enabled": False, "time": "06:30", "days": list(scheduler.DAYS)}, "notify": {"ntfy_topic": ""}}
     if p.exists():
         with open(p, "rb") as f:
             data = tomllib.load(f)
         base.update({k: v for k, v in data.items() if k not in ("schedule", "notify")})
         base["schedule"].update(data.get("schedule", {}))
+        base["schedule"]["days"] = scheduler.clean_days(base["schedule"].get("days"))
         base["notify"].update(data.get("notify", {}))
     return base
 
@@ -337,7 +437,8 @@ def dashboard():
     health = jread(doctor.RESULT, {})
     issues = [c for c in health.get("checks", []) if c["status"] != "ok"]
     return render_template("dashboard.html", last=last, ran=_ran(last), task=task_state(), search=read_search(),
-                           ch=dashboard_charts(), health=health, issues=issues)
+                           ch=dashboard_charts(), health=health, issues=issues, next_run=next_run(),
+                           days_text=scheduler.days_label(read_search()["schedule"].get("days")))
 
 
 @app.route("/doctor", methods=["GET", "POST"])
@@ -369,7 +470,8 @@ def stop():
     t = task_state()
     if t.get("running"):
         try:
-            os.killpg(int(t["pid"]), signal.SIGINT)      # like pressing Control+C: finished work is saved
+            pid = int(jread(RUN_STATUS, {}).get("pid") or t.get("pid"))
+            os.killpg(os.getpgid(pid), signal.SIGINT)   # like pressing Control+C: finished work is saved
             flash("Stopping... finished work is kept.", "ok")
         except OSError:
             pass
@@ -500,6 +602,10 @@ def settings():
         d["max_age_days"] = max(1, int(f.get("max_age_days") or 30))
         d["full_refresh_every_days"] = max(1, int(f.get("full_refresh_every_days") or 7))
         d["schedule"]["enabled"] = bool(f.get("schedule_enabled"))
+        picked = [x for x in scheduler.DAYS if f.get(f"day_{x}")]
+        if d["schedule"]["enabled"] and not picked:
+            flash("Pick at least one day for the morning run; all days were kept.", "warn")
+        d["schedule"]["days"] = picked or list(scheduler.DAYS)
         t = f.get("schedule_time", "06:30")
         d["schedule"]["time"] = t if re.fullmatch(r"\d{2}:\d{2}", t) else "06:30"
         d["notify"]["ntfy_topic"] = re.sub(r"[^A-Za-z0-9_-]", "", f.get("ntfy_topic", ""))
@@ -507,7 +613,9 @@ def settings():
         ok, msg = scheduler.apply_schedule()
         flash(f"Settings saved. {msg}" if ok else msg, "ok" if ok else "warn")
         return redirect(url_for("settings"))
-    return render_template("settings.html", s=d, st=scheduler.status(), urls=phone_urls())
+    st = scheduler.status()
+    return render_template("settings.html", s=d, st=st, urls=phone_urls(),
+                           days_text=scheduler.days_label(st["schedule"].get("days")))
 
 
 def phone_urls() -> list[str]:
@@ -876,6 +984,8 @@ def main() -> None:
     else:
         print("  iPhone access is off: add WEBAPP_PASSCODE=<your passcode> to .env to turn it on.")
     print("Press Control+C to stop.\n")
+    import threading
+    threading.Thread(target=_catch_up_loop, daemon=True).start()   # runs a missed morning run after sleep
     app.run(host=host, port=PORT, debug=False, threaded=True)
 
 

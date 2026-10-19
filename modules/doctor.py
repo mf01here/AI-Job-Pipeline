@@ -75,13 +75,33 @@ def check_profile() -> dict:
 
 
 def check_lm_studio() -> list[dict]:
-    base = CFG["local_llm"]["base_url"].rstrip("/")
+    lc = CFG["local_llm"]
+    provider = lc.get("provider", "lmstudio")
+    base = lc["base_url"].rstrip("/")
+    names = {"lmstudio": "LM Studio", "ollama": "Ollama"}
+    pname = names.get(provider, provider)
     try:
-        _get_json(base + "/models")
+        listed = _get_json(base + "/models").get("data", [])
     except Exception:  # noqa: BLE001
-        return [_c("Local model server", "fail", f"no answer at {base}",
-                   "Open LM Studio, go to the Developer tab, load your model and start the server.")]
-    out = [_c("Local model server", "ok", f"answering at {base}")]
+        fix = {"lmstudio": "Open LM Studio, go to the Developer tab, load your model and start the server.",
+               "ollama": "Start Ollama: open the Ollama app, or run 'ollama serve' in Terminal."}
+        return [_c("Local model server", "fail", f"{pname}: no answer at {base}",
+                   fix.get(provider, "Start your local model server, or correct base_url in config.toml."))]
+    out = [_c("Local model server", "ok", f"{pname} answering at {base}")]
+    if provider != "lmstudio":
+        model = lc.get("model", "")
+        ids = [m.get("id", "") for m in listed]
+        if not model:
+            out.append(_c("Model", "fail", "no model name set", 'Set [local_llm] model = "..." in config.toml.'))
+        elif ids and not any(model == i or model in i for i in ids):
+            out.append(_c("Model", "fail", f"'{model}' is not available on {pname}",
+                          f"Download it first (e.g. 'ollama pull {model}'), or pick one of: {', '.join(ids[:6])}"))
+        else:
+            out.append(_c("Model", "ok", model))
+        out.append(_c("Context length", "warn", f"cannot be read from {pname}",
+                      "Make sure it is 16384 or more (Ollama: set OLLAMA_CONTEXT_LENGTH=16384 or the app's context "
+                      "setting); a shorter one silently cuts prompts. Run the model test below."))
+        return out
     root = base[:-3] if base.endswith("/v1") else base
     try:
         models = _get_json(root + "/api/v0/models").get("data", [])
@@ -108,7 +128,7 @@ def check_model_reply() -> dict:
         call = make_llm("")
         reply = call([{"role": "system", "content": "Output ONLY one JSON object."},
                       {"role": "user", "content": 'Reply with {"ok": true}'}])
-    except Exception as e:  # noqa: BLE001
+    except (Exception, SystemExit) as e:  # noqa: BLE001
         return _c("Model test", "fail", f"{type(e).__name__}: {str(e)[:150]}", "Check that the model is loaded and the server is on.")
     info = getattr(call, "last", {}) or {}
     try:
@@ -118,8 +138,9 @@ def check_model_reply() -> dict:
         valid = False
     if info.get("thinking"):
         return _c("Model test", "fail", f"{call.model_name}: it is 'thinking' before answering (slow)",
-                  "Switch thinking off: in LM Studio, open the model's settings > Prompt Template and add "
-                  "{%- set enable_thinking = false %} as the first line, then reload the model.")
+                  "Switch thinking off. LM Studio: model settings > Prompt Template, add "
+                  "{%- set enable_thinking = false %} as the first line and reload. Other tools: use their "
+                  "'think' / reasoning option, or a non-thinking model.")
     if not valid:
         return _c("Model test", "warn", f"{call.model_name}: reply was not valid JSON", "Try another model, e.g. Qwen 3.5 9B.")
     secs = info.get("seconds", 0)

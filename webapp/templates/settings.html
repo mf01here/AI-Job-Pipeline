@@ -10,9 +10,11 @@
 <div class="grid"><div><label>Ignore listings older than (days)</label><input type="number" name="max_age_days" value="{{ s.max_age_days }}" min="1"></div>
 <div><label>Full refresh every (days)</label><input type="number" name="full_refresh_every_days" value="{{ s.full_refresh_every_days }}" min="1"></div></div>
 <h2>Morning run</h2>
-<label><input type="checkbox" name="schedule_enabled" {{ 'checked' if s.schedule.enabled }}> <span style="font-weight:400">Run automatically every day</span></label>
+<label><input type="checkbox" name="schedule_enabled" {{ 'checked' if s.schedule.enabled }}> <span style="font-weight:400">Run automatically</span></label>
+<label>On these days</label><div class="row">{% for dkey, dname in [('mon','Mon'),('tue','Tue'),('wed','Wed'),('thu','Thu'),('fri','Fri'),('sat','Sat'),('sun','Sun')] %}
+<label style="font-weight:400;margin:4px 6px 4px 0"><input type="checkbox" name="day_{{ dkey }}" {{ 'checked' if dkey in s.schedule.days }}> {{ dname }}</label>{% endfor %}</div>
 <label>Time</label><input type="time" name="schedule_time" value="{{ s.schedule.time }}">
-<p class="muted small">{% if not st.mac %}Scheduling works on macOS only.{% elif st.schedule.enabled and st.morning_installed %}Scheduled: runs every day at {{ st.schedule.time }}. If the Mac is asleep then, it runs as soon as the Mac wakes.{% elif st.schedule.enabled %}Saved but not installed yet: press Save settings.{% else %}Off.{% endif %}</p>
+<p class="muted small">{% if not st.mac %}Scheduling works on macOS only.{% elif st.schedule.enabled and st.morning_installed %}Scheduled: runs {{ days_text }} at {{ st.schedule.time }}. If the Mac is asleep then, it runs as soon as the Mac wakes.{% elif st.schedule.enabled %}Saved but not installed yet: press Save settings.{% else %}Off.{% endif %}</p>
 <h2>iPhone notification</h2>
 <label>ntfy topic (optional)</label><input type="text" name="ntfy_topic" value="{{ s.notify.ntfy_topic }}" placeholder="e.g. my-jobs-7k2q">
 <p class="muted small">Install the free “ntfy” app on your iPhone and subscribe to the same topic name. Pick something hard to guess.</p>

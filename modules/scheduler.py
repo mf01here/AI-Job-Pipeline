@@ -36,6 +36,25 @@ from modules.settings import DATA_DIR, profile_dir  # noqa: E402
 
 AGENTS = Path.home() / "Library" / "LaunchAgents"
 RUN_LABEL = "com.jobpipeline.morning"
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+DAY_NAMES = {"mon": "Mon", "tue": "Tue", "wed": "Wed", "thu": "Thu", "fri": "Fri", "sat": "Sat", "sun": "Sun"}
+LAUNCHD_WEEKDAY = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
+
+
+def clean_days(days) -> list[str]:
+    picked = [d for d in DAYS if d in {str(x).strip().lower()[:3] for x in (days or [])}]
+    return picked or list(DAYS)
+
+
+def days_label(days) -> str:
+    d = clean_days(days)
+    if d == DAYS:
+        return "every day"
+    if d == DAYS[:5]:
+        return "weekdays (Mon-Fri)"
+    if d == DAYS[5:]:
+        return "weekends"
+    return ", ".join(DAY_NAMES[x] for x in d)
 WEB_LABEL = "com.jobpipeline.controlcentre"
 PY = sys.executable
 PATH = ":".join([str(Path(PY).parent), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin",
@@ -93,10 +112,10 @@ def is_loaded(label: str) -> bool:
 def read_schedule(profile: str | None = None) -> dict:
     p = profile_dir(profile) / "search.toml"
     if not p.exists():
-        return {"enabled": False, "time": "06:30"}
+        return {"enabled": False, "time": "06:30", "days": list(DAYS)}
     with open(p, "rb") as f:
         s = tomllib.load(f).get("schedule", {})
-    return {"enabled": bool(s.get("enabled")), "time": str(s.get("time", "06:30"))}
+    return {"enabled": bool(s.get("enabled")), "time": str(s.get("time", "06:30")), "days": clean_days(s.get("days"))}
 
 
 def apply_schedule(profile: str | None = None) -> tuple[bool, str]:
@@ -106,16 +125,17 @@ def apply_schedule(profile: str | None = None) -> tuple[bool, str]:
         return True, "Morning run is off."
     m = re.fullmatch(r"(\d{1,2}):(\d{2})", s["time"])
     hour, minute = (int(m.group(1)), int(m.group(2))) if m else (6, 30)
-    args = ["/usr/bin/caffeinate", "-i", PY, str(ROOT / "orchestrator.py")]
+    args = ["/usr/bin/caffeinate", "-i", PY, str(ROOT / "orchestrator.py"), "--trigger", "scheduled"]
     if profile:
         args += ["--profile", profile]
     ok, err = _install(RUN_LABEL, {
         "ProgramArguments": args, "WorkingDirectory": str(ROOT),
-        "StartCalendarInterval": {"Hour": hour, "Minute": minute},
+        "StartCalendarInterval": ({"Hour": hour, "Minute": minute} if s["days"] == DAYS else
+                                  [{"Weekday": LAUNCHD_WEEKDAY[d], "Hour": hour, "Minute": minute} for d in s["days"]]),
         "StandardOutPath": str(DATA_DIR / "logs" / "scheduled-runs.log"),
         "StandardErrorPath": str(DATA_DIR / "logs" / "scheduled-runs.log"),
         "EnvironmentVariables": {"PATH": PATH, "PYTHONUNBUFFERED": "1"}})
-    return ok, (f"Morning run scheduled every day at {hour:02d}:{minute:02d}." if ok
+    return ok, (f"Morning run scheduled {days_label(s['days'])} at {hour:02d}:{minute:02d}." if ok
                 else f"Could not schedule the morning run: {err}")
 
 
@@ -184,7 +204,7 @@ def main() -> int:
         print(set_background(args.background == "on")[1])
     if args.status or not (args.apply or args.background or args.passcode is not None):
         st = status()
-        print(f"Morning run: {'on at ' + st['schedule']['time'] if st['schedule']['enabled'] else 'off'} "
+        print(f"Morning run: {'on, ' + days_label(st['schedule']['days']) + ' at ' + st['schedule']['time'] if st['schedule']['enabled'] else 'off'} "
               f"({'installed' if st['morning_installed'] else 'not installed'})")
         print(f"Control centre in background: {'yes' if st['background'] else 'no'}")
     return 0

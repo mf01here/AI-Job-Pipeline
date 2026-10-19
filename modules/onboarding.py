@@ -346,7 +346,8 @@ def write_pack(slug: str, st: dict, template_src: Optional[Path] = None) -> list
              f"locations = {json.dumps(s.get('locations', []))}", f"country = {json.dumps(s.get('country', ''))}",
              'sites = ["indeed", "linkedin"' + (', "naukri"]' if s.get("country", "").lower() == "india" else "]"),
              "scan_company_portals = true", 'title_match = "broad"', "max_age_days = 30", "full_refresh_every_days = 7",
-             "", "[schedule]", "enabled = false", 'time = "06:30"', "", "[notify]", 'ntfy_topic = ""']
+             "", "[schedule]", "enabled = false", 'time = "06:30"',
+             'days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]', "", "[notify]", 'ntfy_topic = ""']
     (d / "search.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
     tpl = d / "resume_template.docx"
     if template_src and template_src.exists():

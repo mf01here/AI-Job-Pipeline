@@ -80,8 +80,9 @@ A small web app on your computer (and optionally your phone on home Wi-Fi):
 
 ## Quick start (macOS)
 
-Requirements: Python 3.11+, [LM Studio](https://lmstudio.ai) (free) with a model such as **Qwen 3.5 9B**,
-and optionally [LibreOffice](https://www.libreoffice.org) (free) for silent PDF conversion.
+Requirements: Python 3.11+, a **local model server** (free; see *Choosing your local model* below; the default is
+[LM Studio](https://lmstudio.ai)) with a model such as **Qwen 3.5 9B**, and optionally
+[LibreOffice](https://www.libreoffice.org) (free) for silent PDF conversion.
 
 **Hardware:** a computer with **16 GB of memory** (e.g. an Apple-silicon Mac mini or MacBook) runs a 9B model at about
 15-20 words per second; one job takes roughly 1-2 minutes to analyse. 8 GB machines can try a smaller model with weaker
@@ -97,9 +98,38 @@ python webapp/app.py                 # then open http://localhost:8765
 ```
 
 It starts with the fictional **example** profile, so you can explore before adding your own data.
-In LM Studio: load the model with **Context Length 16384**, start the local server, and turn the model's
-"thinking" off (for Qwen 3.5, add `{%- set enable_thinking = false %}` as the first line of its prompt template).
-Check it with `python modules/local_analyzer.py --probe`.
+Then start your local model (below) and check everything on the **Health check** page, or with
+`python modules/doctor.py --model`.
+
+### Choosing your local model
+
+PipelineHQ works with **any local model server that speaks the OpenAI-compatible API**. Pick yours with one line in
+`config.local.toml` (your personal settings file, never published):
+
+```toml
+[local_llm]
+provider = "ollama"          # lmstudio (default) | ollama | llamacpp | mlx | jan | localai | vllm | other
+model = "qwen3.5:9b"         # the model's name in your tool (LM Studio can leave this empty)
+# base_url = "http://localhost:11434/v1"   # only if your server is not at the provider's usual address
+```
+
+| Provider | Usual address | Notes |
+|---|---|---|
+| `lmstudio` (default) | `http://localhost:1234/v1` | Can start its server and load the model by itself before each run (via its `lms` tool). `model` may stay empty: the loaded model is detected. |
+| `ollama` | `http://localhost:11434/v1` | Set `model` (e.g. `qwen3.5:9b`, after `ollama pull qwen3.5:9b`). Ollama loads it on first use while the Ollama app or `ollama serve` is running. |
+| `llamacpp`, `mlx`, `jan`, `localai`, `vllm`, `other` | see `modules/settings.py` | Set `model`, and `base_url` if your server uses another port. |
+
+Whatever you choose, get two settings right; the Health check's **model test** confirms both:
+
+1. **Context length of at least 16,384 tokens.** Prompts are about 5,000-8,000 tokens. Some tools default much lower
+   and cut prompts off *silently*. LM Studio: set *Context Length* when loading the model. Ollama: set
+   `OLLAMA_CONTEXT_LENGTH=16384` (or the context setting in the Ollama app).
+2. **"Thinking" switched off** for models that think before answering (e.g. Qwen 3.5); otherwise each job takes
+   minutes. LM Studio: open the model's settings > *Prompt Template* and add `{%- set enable_thinking = false %}`
+   as the first line, then reload it. Other tools: use their *think* / *reasoning* option, or a non-thinking model.
+
+Tested with **Qwen 3.5 9B**: it copies quotes faithfully, returns valid JSON and runs at roughly 15-20 words per second
+on a 16 GB Apple-silicon Mac.
 
 ### Windows and Linux
 
@@ -121,8 +151,8 @@ you confirm every fact, and nothing is saved until you do.
    - Best format: **Word (.docx)**. Text-based **PDF** and **.txt** also work.
    - Scanned PDFs (a photo of a page) cannot be read. If you can't select the text in your PDF viewer, export the
      resume to Word or copy its text into a .txt file first.
-2. **Start the local model.** Open LM Studio, load your model (Context Length 16384, thinking off; see Quick start),
-   and start the server. Check it on the **Health check** page with **Check including a model test**: it should be
+2. **Start the local model.** Open your model tool (LM Studio, Ollama, ...) with your model ready: context length
+   16384 or more, thinking off (see *Choosing your local model*). Check it on the **Health check** page with **Check including a model test**: it should be
    green before you continue.
 3. **Open the control centre**: `python webapp/app.py`, then http://localhost:8765. On the Dashboard press
    **Set up my profile** (also in Settings: *Set up a new profile from resumes*).
@@ -207,7 +237,7 @@ Press **Use this profile now**. PipelineHQ switches to it immediately (the choic
 
 | What you see | What to do |
 |---|---|
-| *Could not read the resumes: the local model is not available* | Open LM Studio, load the model, start the server, then press **Read my resumes** again |
+| *Could not read the resumes: the local model is not available* | Start your model server (LM Studio: load the model and start the server; Ollama: open the app), then press **Read my resumes** again |
 | Reading takes many minutes per resume | The model is probably "thinking": run the Health check's model test and follow its fix |
 | Most bullets are marked **reworded** | Your model is paraphrasing; try a different model (Qwen 3.5 9B copies faithfully), or tick the ones that are accurate |
 | Nothing found in a PDF | It is probably a scanned image: export the resume to Word and add the .docx instead |
@@ -234,14 +264,15 @@ profile = "yourname"
 ```
 
 **Health check.** The Dashboard shows a health line; the **Health check** page (or `python modules/doctor.py --model`)
-verifies Python packages, your profile, LM Studio (server, loaded model, context length, thinking switched off), the
+verifies Python packages, your profile, the local model server (server, model, context length, thinking switched off), the
 PDF converter, cloud keys, disk space and the morning run, with a plain fix for anything wrong.
 
 ## Daily use
 
 - **Run everything:** press **Run now** on the dashboard, or `python orchestrator.py`.
-- **Every morning:** switch on the daily run in Settings (uses macOS's built-in scheduler; the Mac runs it on wake
-  if it was asleep).
+- **Automatically:** in Settings, tick *Run automatically*, choose the **days** (any of Mon-Sun) and the **time**,
+  and press *Save settings* (uses macOS's built-in scheduler). If the Mac was asleep at that time, the run starts
+  within a couple of minutes of it waking, at most once per run day. Progress shows live on the Dashboard.
 - **From your phone:** in Settings, run the control centre in the background, set a passcode, then open the shown
   address in Safari and *Add to Home Screen*. Optional push notifications via the free *ntfy* app.
 

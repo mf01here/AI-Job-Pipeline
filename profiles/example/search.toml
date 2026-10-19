@@ -12,6 +12,7 @@ full_refresh_every_days = 7
 [schedule]
 enabled = false
 time = "06:30"
+days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]   # days the morning run happens
 
 [notify]
 ntfy_topic = ""

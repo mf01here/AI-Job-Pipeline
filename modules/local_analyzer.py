@@ -7,7 +7,7 @@ Input : data/pending_jobs.json            (Phase 1)
         profiles/<name>/                  (profile pack: fact_bank.json, resume_profile.json, domain.toml)
 Output: data/evaluated_jobs.json          (list of EvaluatedJob)
 
-PHASE 2 - the local model (LM Studio) reads one job at a time and judges each requirement
+PHASE 2 - the local model (LM Studio, Ollama or any OpenAI-compatible server) reads one job at a time and judges each requirement
 against the Fact Bank. Python then enforces the zero-hallucination rules:
   * output must validate against Phase2GapAnalysis (retry with the error message up to 3 times)
   * "met" needs a verbatim_quote that really exists, word for word, in ONE Fact Bank line;
@@ -535,6 +535,9 @@ def make_llm(model: str = "") -> Callable[[list[dict]], str]:
                     max_retries=0)
     if model in ("", "local-model"):
         model = lc.get("model") or detect_loaded_model(lc["base_url"]) or "local-model"
+    if model == "local-model" and lc.get("provider", "lmstudio") != "lmstudio":
+        raise SystemExit(f"Set the model's name in config.toml: [local_llm] model = \"...\" "
+                         f"(provider '{lc.get('provider')}' cannot tell which model to use).")
     prof = model_profile(model)
 
     def call(messages: list[dict], temperature: Optional[float] = None) -> str:
@@ -618,7 +621,7 @@ def analyze_job(job: NormalizedJob, profile: Profile, call: Callable[[list[dict]
             f"JOB DESCRIPTION:\n{desc}")
     approx_tokens = len(SYSTEM_PROMPT + user) // 3
     if approx_tokens > CONTEXT_WARN_TOKENS:
-        log.warning("    prompt is about %d tokens; set LM Studio's Context Length to at least 16384 or the "
+        log.warning("    prompt is about %d tokens; set your model's context length to at least 16384 or the "
                     "reply may be cut off", approx_tokens)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user}]
     last = ""
@@ -725,7 +728,7 @@ def main() -> int:
     ap.add_argument("--profile", help="profile folder name under profiles/ (default: config.toml)")
     ap.add_argument("--jobs", default=str(DATA_DIR / "pending_jobs.json"))
     ap.add_argument("--out", default=str(DATA_DIR / "evaluated_jobs.json"))
-    ap.add_argument("--model", default="", help="local model name (default: the model loaded in LM Studio)")
+    ap.add_argument("--model", default="", help="local model name (default: config.toml, or the model loaded in LM Studio)")
     ap.add_argument("--limit", type=int, help="analyse at most this many NEW jobs, then stop")
     ap.add_argument("--fresh", action="store_true", help="ignore all saved results")
     ap.add_argument("--reanalyze", metavar="STATUS",
@@ -777,8 +780,9 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001
             if is_connection_error(e):
                 save(entries, out_path)
-                raise SystemExit("\nCannot reach LM Studio. Open LM Studio, load a model, start the Local Server "
-                                 f"(address {LM_STUDIO_BASE_URL}), then run this again. Finished work is saved.")
+                raise SystemExit(f"\nCannot reach the local model server at {LM_STUDIO_BASE_URL}. Start it (LM Studio: "
+                                 "load a model and start the server; Ollama: open the app), then run this again. "
+                                 "Finished work is saved.")
             log.error("    FAILED: %s", str(e)[:200])
             ev = EvaluatedJob(job=job, status=FAILED, status_reasons=["Model analysis failed; it will be retried next run"],
                               model_used=call.model_name, fact_bank_hash=fb_hash,
